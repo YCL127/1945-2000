@@ -326,10 +326,10 @@
               <div>
                 <div class="flex items-center gap-1.5">
                   <span class="font-bold text-slate-800">🎓 選擇去讀書（進修升學）</span>
-                  <span id="stuStudyCostBadge" class="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.2 rounded font-mono">學費 $2,000</span>
+                  <span id="stuStudyCostBadge" class="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.2 rounded font-mono">學費計算中</span>
                 </div>
                 <p id="stuStudyDesc" class="text-[11px] text-slate-500 mt-0.5">
-                  專心求學，本年年收為 0，且需支付學費。必須擁有「大學學歷」，日後才能進入新竹科學園區成為高科技工程師！
+                  專心求學，在學本年年收為 0。學歷進修依序升級：國小(0.7倍) ➔ 國中(0.8倍) ➔ 高中(0.9倍) ➔ 大學(1.0倍，解鎖竹科) ➔ 碩士(1.2倍) ➔ 博士(1.4倍最高加成)。
                 </p>
                 <div id="stuStudyAlert" class="hidden text-[10px] font-bold text-rose-600 mt-1">⚠️ 存款不足以支付學費，目前無法選擇就讀！</div>
               </div>
@@ -640,6 +640,18 @@
       heavy_industry: { name: "重工業工人 (鋼鐵/造船/石化)", badgeClass: "bg-purple-600 text-white", mult: 1.8, desc: "十大建設推手，於中鋼、中船或石化廠工作，待遇豐厚但體力負荷大。" },
       high_tech: { name: "高科技工業工程師 (晶圓半導體)", badgeClass: "bg-emerald-600 text-white", mult: 2.8, desc: "竹科無塵室中流砥柱，晶圓代工與IC設計，享高額股票分紅！" },
       merchant: { name: "經商商人 / 自行創業", badgeClass: "bg-pink-600 text-white", mult: 1.5, desc: "自行開店創業，大順風時利潤翻倍，遇到風暴景氣差時利潤萎縮。" }
+    };
+
+    // ==========================================================
+    // 學歷進修階梯設定 (依序晉升，加成倍率：博士1.4、碩士1.2、大學1.0、高中0.9、國中0.8、國小0.7)
+    // ==========================================================
+    const EDU_CONFIG = {
+      "國小": { next: "國中", mult: 0.7, tuitionRatio: 0.35, nextName: "國中學歷" },
+      "國中": { next: "高中", mult: 0.8, tuitionRatio: 0.50, nextName: "高中學歷" },
+      "高中": { next: "大學", mult: 0.9, tuitionRatio: 0.80, nextName: "大學學歷 (符合竹科門檻)" },
+      "大學": { next: "碩士", mult: 1.0, tuitionRatio: 1.10, nextName: "碩士學歷" },
+      "碩士": { next: "博士", mult: 1.2, tuitionRatio: 1.50, nextName: "博士學歷 (最高學位)" },
+      "博士": { next: null,   mult: 1.4, tuitionRatio: 0,    nextName: "已達最高學歷" }
     };
 
     // 格式化貨幣顯示（含舊臺幣與新臺幣區分）
@@ -1067,16 +1079,17 @@
 
         const choice = s.choice || { action: 'NORMAL', newRole: 'KEEP' };
 
-        // 1. 轉職
+        // 1. 轉職 (高科技工程師需具備大學以上學歷：大學、碩士、博士)
         if (choice.newRole && choice.newRole !== 'KEEP' && ROLES[choice.newRole]) {
-          if (choice.newRole === 'high_tech' && s.education !== '大學') {
-            // 不符合大學學歷不得轉職
+          const isUnivOrAbove = ['大學', '碩士', '博士'].includes(s.education);
+          if (choice.newRole === 'high_tech' && !isUnivOrAbove) {
+            // 不符合大學以上學歷不得轉職
           } else {
             s.role = choice.newRole;
           }
         }
 
-        // 2. 年薪與開銷計算
+        // 2. 年薪與開銷計算 (套用學歷年薪加乘倍率：博士1.4, 碩士1.2, 大學1.0, 高中0.9, 國中0.8, 國小0.7)
         const roleConfig = ROLES[s.role];
         let roleBonusKey = 'lightBonus';
         if (s.role === 'tenant_farmer') roleBonusKey = 'tenantBonus';
@@ -1086,7 +1099,9 @@
         else if (s.role === 'merchant') roleBonusKey = 'bizBonus';
 
         const eraBonus = curData.impact[roleBonusKey] || 1.0;
-        let standardGross = Math.round(curData.baseIncome * roleConfig.mult * eraBonus);
+        const currentEduInfo = EDU_CONFIG[s.education] || EDU_CONFIG["國小"];
+        const eduMult = currentEduInfo.mult; // 學歷加成倍率
+        let standardGross = Math.round(curData.baseIncome * roleConfig.mult * eraBonus * eduMult);
 
         let grossIncome = 0;
         let rent = 0;
@@ -1095,37 +1110,27 @@
         let hpDelta = 0;
         let actionNote = "";
 
-        let tuitionMiddle = isOldTwdYear ? 80000 : 2000;
-        let tuitionCollege = isOldTwdYear ? 200000 : 5000;
-        let tuitionGrad = isOldTwdYear ? 120000 : 3000;
-
         if (choice.action === 'STUDY') {
           grossIncome = 0;
           rent = 0;
           expense = 0;
           hpDelta = +5;
 
-          if (s.education === '國小') {
-            tuition = tuitionMiddle;
+          const nextLevel = currentEduInfo.next;
+          if (nextLevel) {
+            tuition = Math.max(isOldTwdYear ? 20000 : 500, Math.round(curData.baseIncome * currentEduInfo.tuitionRatio));
             if (s.wealth >= tuition) {
-              s.education = '中學';
-              actionNote = `支付學費 ${formatMoney(tuition, curData.year)}，取得【中學學歷】！`;
+              const prevEdu = s.education;
+              s.education = nextLevel;
+              const newEduInfo = EDU_CONFIG[nextLevel];
+              actionNote = `支付學費 ${formatMoney(tuition, curData.year)}，從【${prevEdu}】成功晉升為【${nextLevel}】！年薪加成調升為 ${newEduInfo.mult} 倍！`;
             } else {
               tuition = 0;
-              actionNote = `存款不足學費，留在國小學歷。`;
-            }
-          } else if (s.education === '中學') {
-            tuition = tuitionCollege;
-            if (s.wealth >= tuition) {
-              s.education = '大學';
-              actionNote = `支付學費 ${formatMoney(tuition, curData.year)}，榮登【大學學歷】！取得高科技工程師門票！`;
-            } else {
-              tuition = 0;
-              actionNote = `存款不足學費，留在中學學歷。`;
+              actionNote = `存款不足支付學費，維持在【${s.education}】。`;
             }
           } else {
-            tuition = tuitionGrad;
-            actionNote = `大學深造研發，繳納研修學費 ${formatMoney(tuition, curData.year)}！`;
+            tuition = 0;
+            actionNote = `已具備最高【博士學歷】（享年薪 1.4 倍頂尖加成）！本年進修休養生息。`;
           }
         } else {
           if (choice.action === 'HARD') {
@@ -1152,7 +1157,6 @@
 
         const netSavings = grossIncome - rent - expense - tuition;
         s.wealth = Math.max(0, s.wealth + netSavings);
-
         s.health = Math.min(100, Math.max(0, s.health + hpDelta));
 
         let hospitalNote = "";
@@ -1173,6 +1177,8 @@
         s.lastNotice = {
           year: curData.year,
           roleName: roleConfig.name,
+          education: s.education,
+          eduMult: (EDU_CONFIG[s.education] || EDU_CONFIG["國小"]).mult,
           grossIncome: grossIncome,
           rent: rent,
           expense: expense,
@@ -1210,15 +1216,23 @@
       let newRole = 'KEEP';
       let action = 'NORMAL';
       const isOldTwdYear = curData.year < 1949;
-      const tMiddle = isOldTwdYear ? 80000 : 2000;
-      const tCollege = isOldTwdYear ? 200000 : 5000;
 
       if (s.personality === 'SCHOLAR') {
-        if (s.education === '國小' && s.wealth >= tMiddle) action = 'STUDY';
-        else if (s.education === '中學' && s.wealth >= tCollege) action = 'STUDY';
-        else {
+        const eduInfo = EDU_CONFIG[s.education] || EDU_CONFIG["國小"];
+        if (eduInfo.next) {
+          const tCost = Math.max(isOldTwdYear ? 20000 : 500, Math.round(curData.baseIncome * eduInfo.tuitionRatio));
+          if (s.wealth >= tCost) {
+            action = 'STUDY';
+          } else {
+            action = 'NORMAL';
+          }
+        } else {
           action = 'NORMAL';
-          if (s.education === '大學' && unlocked.includes('high_tech') && s.role !== 'high_tech') newRole = 'high_tech';
+        }
+
+        if (action !== 'STUDY') {
+          const isUnivOrAbove = ['大學', '碩士', '博士'].includes(s.education);
+          if (isUnivOrAbove && unlocked.includes('high_tech') && s.role !== 'high_tech') newRole = 'high_tech';
           else if (unlocked.includes('light_industry') && s.role === 'tenant_farmer') newRole = 'light_industry';
         }
       } else if (s.personality === 'HARD_WORKER') {
@@ -1421,38 +1435,40 @@
       if (timelineItem.isMilestone) nodeAlert.classList.remove('hidden');
       else nodeAlert.classList.add('hidden');
 
-      // 讀書學費與存款限制檢驗（依幣制計算）
+      // 讀書學費與存款限制檢驗（依學歷階梯計算）
       const isOldTwdYear = timelineItem.year < 1949;
-      let requiredTuition = 0;
-      let targetEdu = "";
-      if (myStudentData.education === '國小') {
-        requiredTuition = isOldTwdYear ? 80000 : 2000;
-        targetEdu = "考取【中學學歷】";
-      } else if (myStudentData.education === '中學') {
-        requiredTuition = isOldTwdYear ? 200000 : 5000;
-        targetEdu = "考取【大學學歷】(日後成為高科技工程師門檻！)";
-      } else {
-        requiredTuition = isOldTwdYear ? 120000 : 3000;
-        targetEdu = "深造大學進修研發";
-      }
-
-      document.getElementById('stuStudyCostBadge').innerText = `學費 ${formatMoney(requiredTuition, timelineItem.year)}`;
-      document.getElementById('stuStudyDesc').innerHTML = `支付學費，${targetEdu}。本年度年收為 0。`;
+      const currentEduInfo = EDU_CONFIG[myStudentData.education] || EDU_CONFIG["國小"];
+      const nextEdu = currentEduInfo.next;
 
       const radioStudy = document.getElementById('radioStudy');
       const studyLabel = document.getElementById('stuStudyOptionLabel');
       const studyAlert = document.getElementById('stuStudyAlert');
+      const studyBadge = document.getElementById('stuStudyCostBadge');
+      const studyDesc = document.getElementById('stuStudyDesc');
 
-      // 嚴格檢驗：如果存款不足學費，禁止去讀書
-      if (myStudentData.wealth < requiredTuition) {
+      if (!nextEdu) {
+        // 已是博士最高學位
+        studyBadge.innerText = "已達最高學歷";
+        studyDesc.innerHTML = `已榮獲最高【博士學歷】！享有 <strong>年薪 1.4 倍</strong> 頂尖加成，無須再升學。`;
         radioStudy.disabled = true;
         studyLabel.classList.add('opacity-50', 'bg-slate-100', 'cursor-not-allowed');
-        studyAlert.classList.remove('hidden');
-        studyAlert.innerText = `⚠️ 存款 (${formatMoney(myStudentData.wealth, timelineItem.year)}) 不足支付學費 (${formatMoney(requiredTuition, timelineItem.year)})，目前無法選擇讀書！`;
-      } else {
-        radioStudy.disabled = false;
-        studyLabel.classList.remove('opacity-50', 'bg-slate-100', 'cursor-not-allowed');
         studyAlert.classList.add('hidden');
+      } else {
+        const requiredTuition = Math.max(isOldTwdYear ? 20000 : 500, Math.round(timelineItem.baseIncome * currentEduInfo.tuitionRatio));
+        const nextEduInfo = EDU_CONFIG[nextEdu];
+        studyBadge.innerText = `學費 ${formatMoney(requiredTuition, timelineItem.year)}`;
+        studyDesc.innerHTML = `支付學費，晉升至【<strong>${nextEdu}</strong>】（年薪倍率提升至 <strong>${nextEduInfo.mult} 倍</strong>${nextEdu === '大學' ? '，解鎖竹科高科技工程師門檻！' : ''}）。在學期間年薪為 0。`;
+
+        if (myStudentData.wealth < requiredTuition) {
+          radioStudy.disabled = true;
+          studyLabel.classList.add('opacity-50', 'bg-slate-100', 'cursor-not-allowed');
+          studyAlert.classList.remove('hidden');
+          studyAlert.innerText = `⚠️ 存款 (${formatMoney(myStudentData.wealth, timelineItem.year)}) 不足支付學費 (${formatMoney(requiredTuition, timelineItem.year)})，目前無法選擇就讀！`;
+        } else {
+          radioStudy.disabled = false;
+          studyLabel.classList.remove('opacity-50', 'bg-slate-100', 'cursor-not-allowed');
+          studyAlert.classList.add('hidden');
+        }
       }
 
       // 重大節點轉職下拉選單
@@ -1472,12 +1488,13 @@
       if (unlocked.includes('heavy_industry') && myStudentData.role !== 'heavy_industry') {
         sel.innerHTML += `<option value="heavy_industry">🏗️ 響應十大建設：轉職為【重工業工人】</option>`;
       }
-      // 高科技工業 (嚴格大學學歷限制)
+      // 高科技工業 (嚴格大學以上學歷限制：大學、碩士、博士)
       if (unlocked.includes('high_tech') && myStudentData.role !== 'high_tech') {
-        if (myStudentData.education === '大學') {
-          sel.innerHTML += `<option value="high_tech">💻 進駐新竹科學園區：轉職為【高科技工程師】(具備大學學歷-符合)</option>`;
+        const isUnivOrAbove = ['大學', '碩士', '博士'].includes(myStudentData.education);
+        if (isUnivOrAbove) {
+          sel.innerHTML += `<option value="high_tech">💻 進駐新竹科學園區：轉職為【高科技工程師】(具備${myStudentData.education}學歷-符合大學以上門檻)</option>`;
         } else {
-          sel.innerHTML += `<option value="high_tech" disabled>❌ 高科技工程師 (必須具備大學以上學歷，請先讀書升學！)</option>`;
+          sel.innerHTML += `<option value="high_tech" disabled>❌ 高科技工程師 (必須具備大學以上學歷，目前為【${myStudentData.education}】，請先升學！)</option>`;
         }
       }
       // 經商商人
