@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>走過半世紀：臺灣戰後經濟轉型人生模擬 (1945-2000)</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- QR Code 庫 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    .glass-box { background: rgba(255, 255, 255, 0.98); }
+    /* 自訂健康度條動畫 */
+    .hp-transition { transition: width 0.4s ease, background-color 0.4s ease; }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 font-sans selection:bg-amber-200">
+
+  <!-- 頂部導覽列 -->
+  <header class="bg-slate-900 text-white shadow sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-2.5 flex justify-between items-center">
+      <div class="flex items-center space-x-3">
+        <span class="text-base sm:text-lg font-black tracking-wide flex items-center gap-1.5">
+          <span>🇹🇼</span> 臺灣經濟轉型人生模擬 (1945-2000)
+        </span>
+        <span id="roleBadge" class="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-slate-700 text-slate-200">未連線</span>
+      </div>
+      
+      <!-- 輪數與主控操作 -->
+      <div class="flex items-center space-x-2 sm:space-x-3">
+        <div id="roomInfo" class="hidden text-xs sm:text-sm bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 flex items-center space-x-3">
+          <span id="headerRoomCodeBox">房號：<strong id="displayRoomCode" class="text-amber-400 tracking-widest font-mono text-base">----</strong></span>
+          <span>年份：<strong id="displayYear" class="text-emerald-400 text-lg font-black">1945</strong> 年</span>
+          <span id="displayCurrencyTag" class="text-[10px] bg-amber-500/30 text-amber-300 border border-amber-400/40 px-1.5 py-0.5 rounded font-mono">舊臺幣</span>
+        </div>
+
+        <!-- 老師主控按鈕 -->
+        <button id="btnSpawnBots" onclick="hostSpawnBots()" class="hidden px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-xs shadow transition flex items-center gap-1">
+          <span>🤖 產生4位測試學生</span>
+        </button>
+        <button id="btnLockRoom" onclick="lockAndStartGame()" class="hidden px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-xs shadow transition">
+          開始(鎖定代碼)
+        </button>
+        <button id="btnFastForward" onclick="hostFastForwardMilestone()" class="hidden px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs shadow transition">
+          ⏩ 跳至下個重大事件
+        </button>
+        <button id="btnNextRound" onclick="hostNextRoundPrompt()" class="hidden px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs shadow transition flex items-center space-x-1">
+          <span>結算下一年 ❯</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto p-3 sm:p-4">
+    <!-- 1. 入口身分選擇區塊 -->
+    <section id="entrySection" class="max-w-md mx-auto mt-8 glass-box p-6 rounded-2xl shadow-xl border border-slate-200">
+      <div class="text-center mb-5">
+        <span class="text-3xl mb-1 inline-block">🌾 ➔ 🏭 ➔ 💻</span>
+        <h2 class="text-xl font-black text-slate-800">戰後臺灣人生歷程模擬</h2>
+        <p class="text-xs text-slate-500 mt-1">從 1945 戰後佃農出發，經歷半世紀歷史抉擇</p>
+      </div>
+
+      <div class="space-y-4">
+        <!-- 學生加入 -->
+        <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
+          <h3 class="font-bold text-sm text-indigo-700 mb-2">我是學生（輸入驗證碼加入）</h3>
+          <div class="space-y-2.5">
+            <input type="text" id="inputRoomCode" placeholder="請輸入 4 位房間代碼" maxlength="4" class="w-full px-3 py-2 text-center tracking-widest font-black uppercase text-lg border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-mono" />
+            <input type="text" id="inputStudentName" placeholder="請輸入座號與暱稱 (例如：07 許大明)" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white" />
+            <button onclick="joinAsStudent()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg transition shadow text-sm">連線登入角色</button>
+          </div>
+        </div>
+
+        <div class="relative flex py-1 items-center">
+          <div class="flex-grow border-t border-slate-300"></div>
+          <span class="flex-shrink mx-4 text-xs text-slate-400 font-medium">或</span>
+          <div class="flex-grow border-t border-slate-300"></div>
+        </div>
+
+        <!-- 老師開房 -->
+        <button onclick="startAsHost()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl shadow transition text-sm flex items-center justify-center space-x-2">
+          <span>我是老師，建立大螢幕主控台 (Host)</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 2. 老師端大螢幕 (無折線圖，字體大，適合教室投影) -->
+    <section id="hostSection" class="hidden space-y-3">
+      <!-- 登入大廳卡片 (鎖定前顯示) -->
+      <div id="hostLobbyCard" class="bg-indigo-50 border border-indigo-200 p-4 rounded-xl shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div class="flex items-center space-x-4">
+          <div id="qrcode" class="p-1 bg-white rounded border shadow-xs"></div>
+          <div>
+            <div class="text-xs text-indigo-800 font-bold">請學生掃描 QR Code 或輸入房間代碼加入：</div>
+            <div id="hostRoomCodeDisplay" class="text-4xl font-black tracking-widest text-indigo-600 font-mono mt-0.5">----</div>
+          </div>
+        </div>
+        <div class="text-xs text-indigo-900 text-right space-y-1.5">
+          <div class="flex justify-end gap-2">
+            <button onclick="hostOpenStudentTab()" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs shadow transition flex items-center gap-1">
+              <span>🪟 在新分頁開啟學生端</span>
+            </button>
+          </div>
+          <div>💡 若您正在預覽測試，可直接點上方【<strong>🤖 產生4位測試學生</strong>】秒速模擬！</div>
+          <div class="text-slate-500">已全面支援跨分頁通訊，免開外部 WebSocket，安全無報錯。</div>
+        </div>
+      </div>
+
+      <!-- 學生繳交進度條與各工種人口統計 -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+        <!-- 繳交進度 -->
+        <div class="lg:col-span-5 bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div class="flex justify-between items-center text-xs mb-1.5">
+            <span class="font-bold text-slate-700">全班年度抉擇送出進度：</span>
+            <span id="hostProgressCount" class="font-black text-indigo-600 text-sm">0 / 0 人</span>
+          </div>
+          <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden mb-2">
+            <div id="hostProgressBar" class="bg-indigo-600 h-full w-0 transition-all duration-300"></div>
+          </div>
+          <div id="hostStudentRoster" class="flex items-center space-x-1.5 overflow-x-auto py-1 max-h-12"></div>
+        </div>
+
+        <!-- 全班職業分佈比例卡片 -->
+        <div class="lg:col-span-7 bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div class="text-xs font-bold text-slate-700 mb-1">🏛️ 當年度全班職業結構分佈</div>
+          <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center text-xs">
+            <div class="p-1.5 bg-amber-50 rounded-lg border border-amber-200">
+              <span class="block text-[10px] text-amber-700">佃農</span>
+              <strong id="census_tenant" class="text-amber-800 text-base font-black">0</strong> 人
+            </div>
+            <div class="p-1.5 bg-orange-50 rounded-lg border border-orange-200">
+              <span class="block text-[10px] text-orange-700">自耕農</span>
+              <strong id="census_owner" class="text-orange-800 text-base font-black">0</strong> 人
+            </div>
+            <div class="p-1.5 bg-blue-50 rounded-lg border border-blue-200">
+              <span class="block text-[10px] text-blue-700">輕工業</span>
+              <strong id="census_light" class="text-blue-800 text-base font-black">0</strong> 人
+            </div>
+            <div class="p-1.5 bg-purple-50 rounded-lg border border-purple-200">
+              <span class="block text-[10px] text-purple-700">重工業</span>
+              <strong id="census_heavy" class="text-purple-800 text-base font-black">0</strong> 人
+            </div>
+            <div class="p-1.5 bg-emerald-50 rounded-lg border border-emerald-200">
+              <span class="block text-[10px] text-emerald-700">高科技工業</span>
+              <strong id="census_tech" class="text-emerald-800 text-base font-black">0</strong> 人
+            </div>
+            <div class="p-1.5 bg-pink-50 rounded-lg border border-pink-200">
+              <span class="block text-[10px] text-pink-700">經商商人</span>
+              <strong id="census_biz" class="text-pink-800 text-base font-black">0</strong> 人
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 核心區域：大頻歷史重大事件看板 (字體大、焦點清晰) -->
+      <div class="bg-gradient-to-br from-amber-50 via-white to-orange-50 border-2 border-amber-400 p-5 sm:p-6 rounded-2xl shadow-md space-y-4">
+        <div class="flex flex-wrap justify-between items-center gap-2 border-b border-amber-200 pb-3">
+          <div class="flex items-center gap-2">
+            <span id="hostEraBadge" class="text-xs bg-amber-600 text-white font-bold px-2.5 py-1 rounded-md shadow-xs">戰後初期</span>
+            <span id="hostMilestoneTag" class="hidden text-xs bg-rose-600 text-white font-black px-2.5 py-1 rounded-md shadow-xs animate-pulse">🔥 重大歷史轉折節點</span>
+          </div>
+          <div class="text-right">
+            <span class="text-xs text-slate-500">全國基準年所得：</span>
+            <strong id="hostBaseIncomeDisplay" class="text-base text-slate-900 font-mono font-black">$1,200</strong>
+          </div>
+        </div>
+
+        <div>
+          <h2 id="hostEventTitle" class="text-2xl sm:text-3xl font-black text-slate-900 leading-tight">
+            1945年：二戰結束，接收臺灣百廢待興
+          </h2>
+          <p id="hostEventDesc" class="text-sm sm:text-base text-slate-700 mt-2 leading-relaxed">
+            大戰結束，中華民國接收臺灣。工業建設受戰火波及破壞嚴重，物價飛漲、糧食不足，社會十分艱困。全臺絕大多數人都是靠耕田維生的佃農。
+          </p>
+        </div>
+
+        <!-- 歷史對各行各業的影響機制解說 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+          <div class="bg-white/80 p-3 rounded-xl border border-amber-200 text-xs leading-relaxed">
+            <div class="font-bold text-amber-900 mb-1 flex items-center gap-1">
+              <span>🌾</span> 土地制度與生活開銷規範：
+            </div>
+            <div id="hostRuleNote" class="text-slate-600">
+              目前佃農需扣除高達 <strong class="text-rose-600">50%</strong> 收成做為地租！除讀書外，所有人皆需扣除 <strong class="text-slate-800">80% 基本生活開銷</strong>。
+            </div>
+          </div>
+          <div class="bg-white/80 p-3 rounded-xl border border-amber-200 text-xs leading-relaxed">
+            <div class="font-bold text-indigo-900 mb-1 flex items-center gap-1">
+              <span>⚙️</span> 當期開放與轉職機會：
+            </div>
+            <div id="hostUnlockNote" class="text-slate-600">
+              全體皆為佃農，等待重大政策變革出現。
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 即時資產排名看板 (大螢幕展示) -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+        <div class="flex justify-between items-center mb-2.5">
+          <h3 class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+            <span>🏆</span> 全班累積財富領先榜
+          </h3>
+          <span class="text-xs text-slate-400">每年結算後自動更新</span>
+        </div>
+        <div id="hostTopRanking" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5"></div>
+      </div>
+    </section>
+
+    <!-- 3. 學生端介面 (手機/平板/電腦，無折線圖，聚焦自我決策) -->
+    <section id="studentSection" class="hidden max-w-xl mx-auto space-y-3.5">
+      <!-- 學生個人資訊看板 -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        <div class="flex justify-between items-center border-b pb-2.5 border-slate-100">
+          <div>
+            <span class="text-[10px] text-slate-400 font-medium block">學生暱稱</span>
+            <span id="stuPlayerName" class="text-base font-black text-slate-800">--</span>
+          </div>
+          <div class="text-right">
+            <span class="text-[10px] text-slate-400 font-medium block">當前年份</span>
+            <span id="stuYearDisplay" class="text-xl font-black text-emerald-600 font-mono">1945 年</span>
+          </div>
+        </div>
+
+        <!-- 屬性四宮格 -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-center">
+          <div class="p-2 bg-slate-50 rounded-xl border border-slate-200">
+            <div class="text-[10px] text-slate-400 font-medium">目前職業</div>
+            <div id="stuRoleName" class="font-bold text-amber-700 text-xs mt-0.5">佃農</div>
+          </div>
+          <div class="p-2 bg-slate-50 rounded-xl border border-slate-200">
+            <div class="text-[10px] text-slate-400 font-medium">最高學歷</div>
+            <div id="stuEduDisplay" class="font-bold text-indigo-700 text-xs mt-0.5">國小</div>
+          </div>
+          <div class="p-2 bg-slate-50 rounded-xl border border-slate-200 col-span-2 sm:col-span-1">
+            <div class="text-[10px] text-slate-400 font-medium">累積儲蓄存款</div>
+            <div id="stuWealthDisplay" class="font-black text-emerald-600 text-sm mt-0.5 font-mono">舊臺幣 $100,000</div>
+          </div>
+          <div class="p-2 bg-slate-50 rounded-xl border border-slate-200 col-span-2 sm:col-span-1 text-left">
+            <div class="flex justify-between text-[10px] text-slate-400 font-medium">
+              <span>健康值</span>
+              <span id="stuHpNum" class="font-bold text-slate-700 font-mono">100/100</span>
+            </div>
+            <div class="w-full bg-slate-200 h-2 rounded-full overflow-hidden mt-1">
+              <div id="stuHpBar" class="h-full bg-emerald-500 hp-transition w-full"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 上一年度詳細財務對帳單 (清楚呈現租金與80%生活開銷) -->
+      <div id="stuAnnualNotice" class="hidden p-3.5 rounded-2xl text-xs bg-slate-50 border border-slate-300 text-slate-800 shadow-sm space-y-1.5">
+        <div class="flex justify-between items-center border-b pb-1 border-slate-200 font-bold">
+          <span class="text-indigo-800 flex items-center gap-1">🧾 <span id="stuNoticeYear">1945</span>年度財務對帳單</span>
+          <span id="stuNoticeNetText" class="font-mono text-emerald-600 font-black">+$0</span>
+        </div>
+        <div id="stuNoticeDetail" class="text-[11px] space-y-0.5 text-slate-600 leading-relaxed"></div>
+      </div>
+
+      <!-- 當年度歷史情勢卡片 -->
+      <div class="bg-amber-50/90 border-l-4 border-amber-500 p-3.5 rounded-r-2xl shadow-xs text-xs space-y-1">
+        <div class="flex justify-between items-center">
+          <span id="stuEraTag" class="text-[10px] bg-amber-600 text-white font-bold px-1.5 py-0.5 rounded">歷史大事件</span>
+          <span id="stuNodeAlert" class="hidden text-[10px] bg-rose-600 text-white font-bold px-1.5 py-0.5 rounded animate-pulse">⭐ 重大轉折節點</span>
+        </div>
+        <h4 id="stuEventTitle" class="font-black text-slate-900 text-sm">二戰結束與戰後復原</h4>
+        <p id="stuEventDesc" class="text-slate-600 text-[11px] leading-relaxed"></p>
+      </div>
+
+      <!-- 年度行動決策面板 (未鎖定時顯示) -->
+      <div id="stuActionCard" class="bg-white p-4 rounded-2xl border border-slate-200 shadow space-y-4">
+        <!-- 步驟一：工作模式與求學四選一 -->
+        <div>
+          <label class="block text-xs font-bold text-slate-800 mb-2">🎯 步驟一：選擇本年度工作/進修方針</label>
+          <div class="space-y-2 text-xs">
+            <!-- A. 努力工作 -->
+            <label class="flex items-start p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
+              <input type="radio" name="stuAction" value="HARD" class="mt-0.5 mr-2.5 text-indigo-600" />
+              <div>
+                <span class="font-bold text-slate-800">💪 努力工作（拚命加班）</span>
+                <p class="text-[11px] text-slate-500 mt-0.5">年薪獲得 <strong class="text-emerald-600">+40% 加成</strong>，但精神肉體疲勞，<strong class="text-rose-600">健康度 -15 點</strong>。</p>
+              </div>
+            </label>
+
+            <!-- B. 一般工作 -->
+            <label class="flex items-start p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
+              <input type="radio" name="stuAction" value="NORMAL" checked class="mt-0.5 mr-2.5 text-indigo-600" />
+              <div>
+                <span class="font-bold text-slate-800">⚖️ 一般工作（正常工時）</span>
+                <p class="text-[11px] text-slate-500 mt-0.5">領取標準年薪，生活作息正常，<strong class="text-slate-600">健康度 -2 點</strong>。</p>
+              </div>
+            </label>
+
+            <!-- C. 輕鬆工作 -->
+            <label class="flex items-start p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
+              <input type="radio" name="stuAction" value="EASY" class="mt-0.5 mr-2.5 text-indigo-600" />
+              <div>
+                <span class="font-bold text-slate-800">🍵 輕鬆工作（休閒減壓）</span>
+                <p class="text-[11px] text-slate-500 mt-0.5">收入減少 <strong class="text-amber-600">-30%</strong>，但身心獲得充分休息，<strong class="text-emerald-600">健康度 +12 點</strong>（上限 100）。</p>
+              </div>
+            </label>
+
+            <!-- D. 選擇去讀書 (存款不足嚴格禁止) -->
+            <label id="stuStudyOptionLabel" class="flex items-start p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
+              <input type="radio" name="stuAction" id="radioStudy" value="STUDY" class="mt-0.5 mr-2.5 text-indigo-600" />
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <span class="font-bold text-slate-800">🎓 選擇去讀書（進修升學）</span>
+                  <span id="stuStudyCostBadge" class="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.2 rounded font-mono">學費 $2,000</span>
+                </div>
+                <p id="stuStudyDesc" class="text-[11px] text-slate-500 mt-0.5">
+                  專心求學，本年年收為 0，且需支付學費。必須擁有「大學學歷」，日後才能進入新竹科學園區成為高科技工程師！
+                </p>
+                <div id="stuStudyAlert" class="hidden text-[10px] font-bold text-rose-600 mt-1">⚠️ 存款不足以支付學費，目前無法選擇就讀！</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- 步驟二：職業轉換申請 -->
+        <div>
+          <label class="block text-xs font-bold text-slate-800 mb-1.5">💼 步驟二：重大節點職業選擇 (生涯轉型)</label>
+          <select id="stuCareerChoice" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium bg-white">
+            <option value="KEEP">維持目前職業 (不變動)</option>
+          </select>
+          <p id="stuCareerHint" class="text-[10px] text-slate-400 mt-1">
+            隨著歷史進程（耕者有其田、加工出口區、十大建設、竹科），將解鎖各工種。
+          </p>
+        </div>
+
+        <button id="stuSubmitBtn" onclick="stuSubmitDecision()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow transition">
+          確認並送出本年度決策
+        </button>
+      </div>
+
+      <!-- 已送出等待卡片 -->
+      <div id="stuWaitCard" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-800 p-5 rounded-2xl text-center shadow-sm space-y-1">
+        <div class="text-2xl">✅</div>
+        <div class="font-bold text-sm">已鎖定並送出本年度抉擇！</div>
+        <div class="text-xs text-emerald-700">請抬頭觀看大螢幕，等待老師推進並結算下一年。</div>
+      </div>
+    </section>
+
+    <!-- 4. 2000年千禧年結算：終局榮譽榜 -->
+    <section id="leaderboardSection" class="hidden bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 text-center max-w-3xl mx-auto">
+      <div class="text-4xl mb-2">🎉 1945 - 2000</div>
+      <h2 class="text-2xl font-black text-slate-900 mb-1">走過半世紀：臺灣經濟轉型 最終成就結算榜</h2>
+      <p class="text-xs text-slate-500 mb-6">全班共同走過 55 年奮鬥史，見證從貧困農業社會蛻變為全球科技重鎮！</p>
+
+      <div class="overflow-hidden rounded-xl border border-slate-200 mb-6">
+        <table class="w-full text-left text-xs sm:text-sm">
+          <thead class="bg-slate-50 text-slate-500 uppercase">
+            <tr>
+              <th class="p-2.5 text-center">名次</th>
+              <th class="p-2.5">姓名</th>
+              <th class="p-2.5">最終職業</th>
+              <th class="p-2.5">學歷</th>
+              <th class="p-2.5 text-center">剩餘健康</th>
+              <th class="p-2.5 text-right">累積資產</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboardBody" class="divide-y divide-slate-200"></tbody>
+        </table>
+      </div>
+      <button onclick="location.reload()" class="px-6 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold shadow">
+        重新開始模擬遊戲
+      </button>
+    </section>
+  </main>
+
+  <!-- 自訂確認/提示模態視窗 (避免使用原生 confirm/alert) -->
+  <div id="customModal" class="hidden fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-3">
+      <h3 id="modalTitle" class="font-black text-base text-slate-900">提示</h3>
+      <p id="modalMsg" class="text-xs text-slate-600 leading-relaxed"></p>
+      <div id="modalButtons" class="flex justify-end space-x-2 pt-2">
+        <button id="modalBtnOk" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs">確定</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================================
+    // 歷史事件與真實工資模型 (1945 - 2000，共 56 年完整逐年資料)
+    // 1945-1948: 舊臺幣惡性通膨
+    // 1949: 四萬換一塊，改發新臺幣
+    // ==========================================================
+    const TIMELINE_DATA = [
+      { year: 1945, era: "戰後初期", isMilestone: false, currency: "舊臺幣",
+        title: "二戰結束，接收臺灣百廢待興",
+        desc: "大戰結束，中華民國接收臺灣。全臺工廠與水電受戰火破壞嚴重，物資奇缺、糧食不足。全臺近八成民眾皆為租地耕種之佃農。",
+        baseIncome: 80000, unlockRoles: [], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.0 } },
+      { year: 1946, era: "戰後初期", isMilestone: false, currency: "舊臺幣",
+        title: "戰後物價飛漲與物資短缺",
+        desc: "接收初期管理混亂，霍亂與天花疫情爆發，米糧物資被大量運往大陸支援內戰，臺灣市場物價開始飆升。",
+        baseIncome: 250000, unlockRoles: [], impact: { tenantBonus: 0.95, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.1 } },
+      { year: 1947, era: "戰後初期", isMilestone: false, currency: "舊臺幣",
+        title: "二二八事件爆發與通貨膨脹加劇",
+        desc: "二二八事件重創社會信任，全臺實施戒嚴與秩序重組。舊臺幣大量印製發行，物價一日三市狂飆不止。",
+        baseIncome: 1200000, unlockRoles: [], impact: { tenantBonus: 0.9, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.2 } },
+      { year: 1948, era: "惡性通膨頂峰", isMilestone: false, currency: "舊臺幣",
+        title: "舊臺幣超級惡性膨脹，買米需整捆鈔票",
+        desc: "惡性通貨膨脹達到頂點，一袋麵粉飆到幾十萬舊臺幣，工人領到薪水必須立刻跑步去買米，否則隔天就貶值一半！",
+        baseIncome: 8000000, unlockRoles: [], impact: { tenantBonus: 0.85, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.3 } },
+      { year: 1949, era: "幣制改革與土地改革", isMilestone: true, currency: "新臺幣",
+        title: "【歷史巨變】四萬換一塊！發行新臺幣與三七五減租",
+        desc: "6月15日政府宣布幣制改革：『四萬塊舊臺幣折換一塊新臺幣』，全班存款除以40,000！同時實施三七五減租，佃農地租上限降為37.5%！",
+        baseIncome: 2800, unlockRoles: [], impact: { tenantBonus: 1.3, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.1 } },
+      { year: 1950, era: "韓戰與美援序曲", isMilestone: false, currency: "新臺幣",
+        title: "韓戰爆發，美軍第七艦隊協防臺灣",
+        desc: "韓戰爆發，美國重新重視臺灣戰略地位，美軍協防海峽，政局與新臺幣幣值逐漸轉趨穩定。",
+        baseIncome: 3400, unlockRoles: [], impact: { tenantBonus: 1.1, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.15 } },
+      { year: 1951, era: "美援物資時期", isMilestone: false, currency: "新臺幣",
+        title: "美援麵粉與脫脂奶粉大量抵臺",
+        desc: "美國物資援助抵臺，麵食與牛奶在校園和家庭普及，印有中美合作握手標誌的純棉麵粉袋，被民間縫製為耐磨的『卡動短褲』！",
+        baseIncome: 4200, unlockRoles: [], impact: { tenantBonus: 1.1, ownerBonus: 1.1, lightBonus: 1.1, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.2 } },
+      { year: 1952, era: "美援交通建設", isMilestone: false, currency: "新臺幣",
+        title: "西螺大橋通車，獲譽遠東第一大橋",
+        desc: "美援鋼材與資金援助下，濁水溪上的西螺大橋完工通車，南北陸運自此暢通無阻，為全臺農工商運送奠定關鍵基礎。",
+        baseIncome: 5100, unlockRoles: [], impact: { tenantBonus: 1.1, ownerBonus: 1.15, lightBonus: 1.15, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.3 } },
+      { year: 1953, era: "耕者有其田", isMilestone: true, currency: "新臺幣",
+        title: "【重大節點】耕者有其田全面實施！",
+        desc: "政府向地主徵購私有耕地轉售予承租佃農，佃農自此擁有自己的田地！地主獲四大公營公司股票轉入工商業。【解鎖轉職：自耕農、經商商人】",
+        baseIncome: 6500, unlockRoles: ["owner_farmer", "merchant"], impact: { tenantBonus: 1.1, ownerBonus: 1.4, lightBonus: 1.2, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.4 } },
+      { year: 1954, era: "農村安定", isMilestone: false, currency: "新臺幣",
+        title: "簽訂《中美共同防禦條約》",
+        desc: "自耕農辛勤耕作，稻米與糖產量逐年回升，奠定『以農業培養工業』的國家發展方針。",
+        baseIncome: 7300, unlockRoles: ["owner_farmer", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.2, lightBonus: 1.2, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.3 } },
+      { year: 1955, era: "水利奠基", isMilestone: false, currency: "新臺幣",
+        title: "石門水庫工程獲美援批准籌建",
+        desc: "為解決北部農業灌溉與發電用水問題，政府向美國提出貸款與技術申請，石門水庫建設正式拍板啟動。",
+        baseIncome: 8200, unlockRoles: ["owner_farmer", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.2, lightBonus: 1.2, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.3 } },
+      { year: 1956, era: "民生工業起步", isMilestone: false, currency: "新臺幣",
+        title: "省政府疏遷南投中興新村",
+        desc: "防空戰備考量下省府遷往南投。民間紡織廠、水泥廠與肥皂民生工業蓬勃發展，滿足國內基本物資需求。",
+        baseIncome: 9000, unlockRoles: ["owner_farmer", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.15, lightBonus: 1.25, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.3 } },
+      { year: 1957, era: "美式文化進入", isMilestone: false, currency: "新臺幣",
+        title: "劉自然事件爆發，美援文化深植社會",
+        desc: "美軍在臺駐紮帶來好萊塢電影、爵士樂、可口可樂與西式餐飲，美式文化悄然走進臺灣都市生活。",
+        baseIncome: 9800, unlockRoles: ["owner_farmer", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.15, lightBonus: 1.2, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.35 } },
+      { year: 1958, era: "八二三砲戰", isMilestone: false, currency: "新臺幣",
+        title: "八二三砲戰爆發，大同電扇誕生",
+        desc: "金門前線承受四十七萬發砲彈轟炸；後方大同公司量產耐用鐵製電風扇，成為臺灣早期現代家庭最重要的嫁妝與家電！",
+        baseIncome: 10800, unlockRoles: ["owner_farmer", "merchant"], impact: { tenantBonus: 0.95, ownerBonus: 1.1, lightBonus: 1.3, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.35 } },
+      { year: 1959, era: "八七水災考驗", isMilestone: false, currency: "新臺幣",
+        title: "【天災】八七水災重創中臺灣農村",
+        desc: "艾倫颱風引發世紀暴雨，中南部十三縣市汪洋一片，良田沖毀農損慘重，全臺動員軍民救災與重建！",
+        baseIncome: 11500, unlockRoles: ["owner_farmer", "merchant"], impact: { tenantBonus: 0.75, ownerBonus: 0.8, lightBonus: 1.2, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.2 } },
+      { year: 1960, era: "獎勵投資條例", isMilestone: false, currency: "新臺幣",
+        title: "政府實施《獎勵投資條例》鼓勵民間設廠",
+        desc: "以減稅和土地優惠鼓勵企業興辦工廠，農村青年開始利用農閒前往市區或家庭手工副業打工賺錢。",
+        baseIncome: 12500, unlockRoles: ["owner_farmer", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.1, lightBonus: 1.35, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.4 } },
+      { year: 1961, era: "中華商場落成", isMilestone: false, currency: "新臺幣",
+        title: "臺北中華商場落成，西門町商圈繁華",
+        desc: "八連棟中華商場成為全臺電子零件、制服、唱片與外省美食集散地，象徵商業零售蓬勃興起。",
+        baseIncome: 13800, unlockRoles: ["owner_farmer", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.1, lightBonus: 1.35, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.5 } },
+      { year: 1962, era: "電視時代來臨", isMilestone: false, currency: "新臺幣",
+        title: "臺灣電視公司（台視）正式開播",
+        desc: "臺灣進入電視廣播時代，黑白電視機成為全村圍觀的焦點，楊麗花歌仔戲與群星會席捲民間娛樂。",
+        baseIncome: 15200, unlockRoles: ["owner_farmer", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.1, lightBonus: 1.4, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.45 } },
+      { year: 1963, era: "防洪工程", isMilestone: false, currency: "新臺幣",
+        title: "葛樂禮颱風肆虐，石門水庫緊急排洪",
+        desc: "超級強颱重創大臺北，甫完工蓄水的石門水庫承受超大洪峰考驗，促成後續增建排洪隧道工程。",
+        baseIncome: 16500, unlockRoles: ["owner_farmer", "merchant"], impact: { tenantBonus: 0.9, ownerBonus: 0.95, lightBonus: 1.3, heavyBonus: 1.0, techBonus: 1.0, bizBonus: 1.3 } },
+      { year: 1964, era: "水利落成", isMilestone: false, currency: "新臺幣",
+        title: "石門水庫全線竣工，麥克阿瑟公路通車",
+        desc: "全臺首座多功能大型水庫正式啟用，提供北部發電、農業與工業用水；第一條快速道路麥帥公路通車。",
+        baseIncome: 18000, unlockRoles: ["owner_farmer", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.2, lightBonus: 1.4, heavyBonus: 1.1, techBonus: 1.0, bizBonus: 1.4 } },
+      { year: 1965, era: "美援結束", isMilestone: false, currency: "新臺幣",
+        title: "美援正式終止，臺灣邁向經濟自立",
+        desc: "十五年美援圓滿退場，臺灣轉為自立自強靠製造與出口賺取外匯，政府積極規劃外銷特區。",
+        baseIncome: 19800, unlockRoles: ["owner_farmer", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.15, lightBonus: 1.45, heavyBonus: 1.1, techBonus: 1.0, bizBonus: 1.45 } },
+      { year: 1966, era: "加工出口區起飛", isMilestone: true, currency: "新臺幣",
+        title: "【重大節點】高雄加工出口區正式成立！",
+        desc: "全世界首創之加工出口區在高雄前鎮誕生！外資湧入設廠組裝家電與電子，成千上萬農村青年與女性成為產線女工！【可轉職為：輕工業工人】",
+        baseIncome: 22000, unlockRoles: ["owner_farmer", "light_industry", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.1, lightBonus: 1.6, heavyBonus: 1.1, techBonus: 1.0, bizBonus: 1.5 } },
+      { year: 1967, era: "直轄市升格", isMilestone: false, currency: "新臺幣",
+        title: "臺北市升格直轄市，都市急速擴張",
+        desc: "都市工廠與服務業大量吸納就業人口，城鄉差距逐漸顯現，農村勞動力大量移往大都市加工區。",
+        baseIncome: 24500, unlockRoles: ["owner_farmer", "light_industry", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.1, lightBonus: 1.55, heavyBonus: 1.1, techBonus: 1.0, bizBonus: 1.5 } },
+      { year: 1968, era: "九年國教與少棒熱", isMilestone: false, currency: "新臺幣",
+        title: "推動九年國民義務教育，紅葉少棒傳奇",
+        desc: "國教延長至九年全面提升國民素質；臺東紅葉少棒隊以木棒石塊苦練擊敗日本明星隊，掀起全島棒球狂熱！",
+        baseIncome: 27500, unlockRoles: ["owner_farmer", "light_industry", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.1, lightBonus: 1.5, heavyBonus: 1.1, techBonus: 1.0, bizBonus: 1.45 } },
+      { year: 1969, era: "威廉波特揚威", isMilestone: false, currency: "新臺幣",
+        title: "金龍少棒奪世界冠軍，半夜放鞭炮慶祝",
+        desc: "中華少棒勇奪美國威廉波特世界少棒冠軍，全臺深夜守著黑白電視歡騰，凝聚全民無比自信心！",
+        baseIncome: 31000, unlockRoles: ["owner_farmer", "light_industry", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.1, lightBonus: 1.55, heavyBonus: 1.15, techBonus: 1.0, bizBonus: 1.5 } },
+      { year: 1970, era: "四小龍之首", isMilestone: false, currency: "新臺幣",
+        title: "外銷暢旺，臺灣躍登亞洲四小龍",
+        desc: "紡織、雨傘、球鞋、自行車出口冠絕全球，『客廳即工場』全民拚經濟，出口總額超越進口實現順差！",
+        baseIncome: 35000, unlockRoles: ["owner_farmer", "light_industry", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.1, lightBonus: 1.6, heavyBonus: 1.2, techBonus: 1.0, bizBonus: 1.6 } },
+      { year: 1971, era: "退出聯合國", isMilestone: false, currency: "新臺幣",
+        title: "退出聯合國，國際風雨中莊敬自強",
+        desc: "我國退出聯合國，外交面臨嚴峻孤立，政府提出『莊敬自強，處變不驚』，全民全力衝刺實質對外貿易。",
+        baseIncome: 39500, unlockRoles: ["owner_farmer", "light_industry", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.05, lightBonus: 1.45, heavyBonus: 1.2, techBonus: 1.0, bizBonus: 1.4 } },
+      { year: 1972, era: "中日斷交風暴", isMilestone: false, currency: "新臺幣",
+        title: "中日斷交，民間企業力挽外貿狂瀾",
+        desc: "臺日終止邦交，臺灣產業以靈活的代工韌性開拓美歐新市場，成衣與電子組裝廠接單依舊滿載。",
+        baseIncome: 44000, unlockRoles: ["owner_farmer", "light_industry", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.05, lightBonus: 1.45, heavyBonus: 1.2, techBonus: 1.0, bizBonus: 1.4 } },
+      { year: 1973, era: "石油危機爆發", isMilestone: false, currency: "新臺幣",
+        title: "【歷史考驗】第一次國際石油危機爆發",
+        desc: "以阿第四次中東戰爭引發油價暴漲四倍！國際不景氣與惡性物價上揚，政府痛定思痛決定推動重工業自主！",
+        baseIncome: 51000, unlockRoles: ["owner_farmer", "light_industry", "merchant"], impact: { tenantBonus: 0.95, ownerBonus: 1.0, lightBonus: 0.85, heavyBonus: 0.9, techBonus: 1.0, bizBonus: 0.6 } },
+      { year: 1974, era: "十大建設啟動", isMilestone: true, currency: "新臺幣",
+        title: "【重大節點】推行『十大建設』重工業升級！",
+        desc: "行政院長蔣經國推動中鋼、中船、石化、中山高、核電廠等十大建設！高雄成為鋼鐵與造船重鎮！【可轉職為：重工業工人】",
+        baseIncome: 60000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.2, heavyBonus: 1.8, techBonus: 1.0, bizBonus: 1.4 } },
+      { year: 1975, era: "領袖逝世", isMilestone: false, currency: "新臺幣",
+        title: "蔣中正總統逝世，十大工程日夜施工",
+        desc: "全國哀悼元首，各項重大工程如火如荼推進，擴大內需投資成功抵禦全球經濟衰退衝擊。",
+        baseIncome: 69000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.25, heavyBonus: 1.8, techBonus: 1.0, bizBonus: 1.4 } },
+      { year: 1976, era: "造船奇蹟", isMilestone: false, currency: "新臺幣",
+        title: "中國造船廠完工，高雄造出巨型油輪",
+        desc: "高雄臨海工業區中船率先完工，建造出四十萬噸級超大型油輪，臺灣造船噸位躍居世界領先梯隊！",
+        baseIncome: 79000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.05, lightBonus: 1.3, heavyBonus: 1.85, techBonus: 1.0, bizBonus: 1.45 } },
+      { year: 1977, era: "高爐點火", isMilestone: false, currency: "新臺幣",
+        title: "中鋼第一期高爐點火；中壢事件爆發",
+        desc: "高雄大煉鋼廠一期點火出鐵，供應各項自產鋼板；地方選舉計票爭議引發中壢事件，社會運動逐漸萌芽。",
+        baseIncome: 90000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.05, lightBonus: 1.3, heavyBonus: 1.85, techBonus: 1.0, bizBonus: 1.5 } },
+      { year: 1978, era: "高速公路通車", isMilestone: false, currency: "新臺幣",
+        title: "中山高速公路全線通車，南北一日生活圈",
+        desc: "北起基隆南抵高雄，行車時間由整整一天縮短至4小時！農產品迅速北送，工業零組件沿國道快速運轉。",
+        baseIncome: 104000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.05, lightBonus: 1.35, heavyBonus: 1.75, techBonus: 1.0, bizBonus: 1.6 } },
+      { year: 1979, era: "斷交與美麗島", isMilestone: false, currency: "新臺幣",
+        title: "中美斷交、美麗島事件、第二次石油危機",
+        desc: "美國宣布與我斷交、高雄爆發美麗島事件；伊朗革命引發第二次石油危機，傳統代工毛利被嚴重壓縮。",
+        baseIncome: 120000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "merchant"], impact: { tenantBonus: 0.95, ownerBonus: 1.0, lightBonus: 0.9, heavyBonus: 1.3, techBonus: 1.1, bizBonus: 0.85 } },
+      { year: 1980, era: "竹科建立", isMilestone: true, currency: "新臺幣",
+        title: "【重大節點】新竹科學工業園區正式設立！",
+        desc: "政府設立竹科，引進先進半導體技術！【嚴格限制：必須擁有大學學歷，方可轉職為引領時代的高科技工業工程師！】",
+        baseIncome: 138000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.1, heavyBonus: 1.45, techBonus: 2.3, bizBonus: 1.5 } },
+      { year: 1981, era: "瓊斯盃熱潮", isMilestone: false, currency: "新臺幣",
+        title: "威廉瓊斯盃國際籃球賽掀起全臺熱潮",
+        desc: "中華體育館擠爆球迷，在斷交低潮中藉由國際體育競技凝聚人心；竹科科技園區迎來首批海歸青年工程師。",
+        baseIncome: 156000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.1, heavyBonus: 1.4, techBonus: 2.3, bizBonus: 1.5 } },
+      { year: 1982, era: "首件銀行搶案", isMilestone: false, currency: "新臺幣",
+        title: "【震撼刑案】李師科持槍搶劫土地銀行",
+        desc: "老兵李師科持警槍搶劫土地銀行五百多萬元，震驚全臺治安與金融界，凸顯老兵退役處境與社會貧富矛盾。",
+        baseIncome: 175000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.1, heavyBonus: 1.4, techBonus: 2.4, bizBonus: 1.4 } },
+      { year: 1983, era: "個人電腦起飛", isMilestone: false, currency: "新臺幣",
+        title: "個人電腦與電子主機板出口起飛",
+        desc: "宏碁、神通等電腦品牌展露頭角，臺灣成為全球IBM相容PC零組件主要代工重鎮，資訊電子成為外銷主力。",
+        baseIncome: 195000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.05, heavyBonus: 1.4, techBonus: 2.5, bizBonus: 1.5 } },
+      { year: 1984, era: "麥當勞旋風", isMilestone: false, currency: "新臺幣",
+        title: "麥當勞首店民生東路開幕大排長龍",
+        desc: "美式連鎖速食掀起排隊狂潮，單日營業額打破全球紀錄；外匯儲備持續累積，臺灣社會消費力空前強勁。",
+        baseIncome: 218000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.05, heavyBonus: 1.35, techBonus: 2.5, bizBonus: 1.6 } },
+      { year: 1985, era: "十信金融風暴", isMilestone: false, currency: "新臺幣",
+        title: "十信金融風暴爆發，地下錢莊重挫",
+        desc: "臺北第十信用合作社違法放貸掏空爆發擠兌潮，波及蔡辰洲家族企業，金管秩序重整，打擊民間投機盲流。",
+        baseIncome: 242000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.3, techBonus: 2.5, bizBonus: 1.1 } },
+      { year: 1986, era: "大家樂狂潮", isMilestone: false, currency: "新臺幣",
+        title: "【全民狂熱】大家樂賭風橫掃，愛國獎券停售",
+        desc: "以愛國獎券為開獎依據的『大家樂』簽賭席捲全臺！大街小巷求神問卜找明牌，廟宇香火鼎盛，省政府被迫停發愛國獎券！",
+        baseIncome: 270000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.35, techBonus: 2.4, bizBonus: 2.2 } },
+      { year: 1987, era: "解嚴與台積電", isMilestone: true, currency: "新臺幣",
+        title: "【重大里程碑】宣告解嚴、張忠謀創辦台積電！",
+        desc: "蔣經國總統宣告解除戒嚴開放探親；張忠謀先生創立台積電，首創純晶圓代工模式，護國神山自此誕生！",
+        baseIncome: 300000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.3, techBonus: 2.6, bizBonus: 2.3 } },
+      { year: 1988, era: "520農運", isMilestone: false, currency: "新臺幣",
+        title: "蔣經國逝世李登輝繼任；520農民運動",
+        desc: "農民為抗議外國農產進口走上立法院街頭爆發激烈衝突；臺灣出口順差龐大，『臺灣錢淹腳目』成為流行語。",
+        baseIncome: 335000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 0.9, ownerBonus: 0.95, lightBonus: 1.0, heavyBonus: 1.3, techBonus: 2.6, bizBonus: 2.5 } },
+      { year: 1989, era: "股市破萬點與鴻源案", isMilestone: false, currency: "新臺幣",
+        title: "【全民瘋狂】台股破萬點！鴻源地下吸金案爆發",
+        desc: "臺股天天無量漲停衝破萬點！營業廳人聲鼎沸，連菜籃族與司機都在看盤；同時鴻源地下吸金案崩盤，近千億資金蒸發！",
+        baseIncome: 375000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.3, techBonus: 2.7, bizBonus: 3.2 } },
+      { year: 1990, era: "股市重挫與野百合", isMilestone: false, currency: "新臺幣",
+        title: "【泡沫破裂】野百合學運；台股自12682暴跌八成",
+        desc: "大學生在中正紀念堂發起野百合學運；臺股衝至歷史最高12,682點後狂瀉至2,485點，盲目投機者血本無歸，實體科技業凸顯支柱價值。",
+        baseIncome: 410000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.25, techBonus: 2.6, bizBonus: 0.5 } },
+      { year: 1991, era: "戡亂結束", isMilestone: false, currency: "新臺幣",
+        title: "宣告終止動員戡亂時期，南二高動工",
+        desc: "兩岸關係進入民間交流與海基會時代；政府推動六年國家建設計畫，持續強化交通與公共基礎建設。",
+        baseIncome: 445000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.25, techBonus: 2.7, bizBonus: 1.3 } },
+      { year: 1992, era: "國會全面改選", isMilestone: false, currency: "新臺幣",
+        title: "南韓與我斷交；首屆立法院全面改選",
+        desc: "亞洲最後一個邦交大國南韓斷交；第二屆立法院全面民選終止萬年國會，民主政治步入常軌。",
+        baseIncome: 475000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.25, techBonus: 2.8, bizBonus: 1.4 } },
+      { year: 1993, era: "科技新貴誕生", isMilestone: false, currency: "新臺幣",
+        title: "竹科半導體股票分紅，『科技新貴』崛起",
+        desc: "晶圓代工與IC設計領先全球，科技工程師享高額股票分紅，年薪千萬傳奇頻傳，成為全臺年輕人最嚮往的第一志願！",
+        baseIncome: 510000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 0.95, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.25, techBonus: 3.2, bizBonus: 1.6 } },
+      { year: 1994, era: "首都市長直選", isMilestone: false, currency: "新臺幣",
+        title: "臺北、高雄市長首度公民直選",
+        desc: "陳水扁當選首任民選臺北市長；千島湖事件衝擊兩岸；全民健康保險法三讀通過積極籌備。",
+        baseIncome: 540000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 0.95, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.25, techBonus: 3.0, bizBonus: 1.5 } },
+      { year: 1995, era: "全民健保開辦", isMilestone: false, currency: "新臺幣",
+        title: "全民健康保險開辦；李登輝訪美臺海風雲",
+        desc: "3月全民健保上路，民眾看病大幅減輕負擔；李登輝訪美引發中共對臺發射飛彈試射，兩岸情勢緊張。",
+        baseIncome: 570000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 0.95, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.25, techBonus: 3.0, bizBonus: 1.4 } },
+      { year: 1996, era: "首次直選總統", isMilestone: false, currency: "新臺幣",
+        title: "首次民選總統；臺海飛彈危機；木柵捷運通車",
+        desc: "臺灣舉辦歷史首次公民直選總統，美軍航母抵臺海威懾飛彈危機；全臺首條捷運木柵線在臺北市通車，邁向大眾捷運生活。",
+        baseIncome: 600000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 0.95, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.25, techBonus: 3.0, bizBonus: 1.4 } },
+      { year: 1997, era: "重大刑案與風暴", isMilestone: false, currency: "新臺幣",
+        title: "【社會震撼】白曉燕命案；亞洲金融風暴爆發",
+        desc: "陳進興等槍擊綁架殺人案引發全臺社會恐慌遊行；泰國引爆亞洲金融風暴，韓元與東南亞金融崩潰，臺灣靠扎實高科技撐住經濟！",
+        baseIncome: 625000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 0.95, ownerBonus: 1.0, lightBonus: 0.95, heavyBonus: 1.2, techBonus: 3.0, bizBonus: 0.9 } },
+      { year: 1998, era: "腸病毒與金融案", isMilestone: false, currency: "新臺幣",
+        title: "腸病毒疫情流行；本土型企業掏空風暴",
+        desc: "全臺爆發腸病毒大流行，家庭醫療衛生成為焦點；部分本土集團擴張過快引發財務危機，政府強化金融監理。",
+        baseIncome: 650000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 0.95, ownerBonus: 1.0, lightBonus: 0.95, heavyBonus: 1.2, techBonus: 3.0, bizBonus: 1.1 } },
+      { year: 1999, era: "921大地震", isMilestone: false, currency: "新臺幣",
+        title: "【世紀天災】921大地震重創，半導體展現韌性",
+        desc: "集集大地震芮氏7.3級天搖地動，兩千多人罹難。全臺大停電讓全球科技晶片供應鏈告急，竹科工程師通宵復機，展現堅韌生命力！",
+        baseIncome: 670000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 0.85, ownerBonus: 0.9, lightBonus: 0.9, heavyBonus: 1.15, techBonus: 3.1, bizBonus: 1.2 } },
+      { year: 2000, era: "千禧年科技島", isMilestone: true, currency: "新臺幣",
+        title: "【終點站：千禧年2000】首次政黨輪替，昂首世界科技島！",
+        desc: "2000年首次政黨輪替。歷經半世紀奮鬥，臺灣晶圓代工市占全球第一，從戰後貧瘠農業社會蛻變為全球不可或缺的科技巨塔！",
+        baseIncome: 700000, unlockRoles: ["owner_farmer", "light_industry", "heavy_industry", "high_tech", "merchant"], impact: { tenantBonus: 1.0, ownerBonus: 1.0, lightBonus: 1.0, heavyBonus: 1.25, techBonus: 3.3, bizBonus: 1.5 } }
+    ];
+
+    // 工種設定與加乘
+    const ROLES = {
+      tenant_farmer: { name: "農民 (佃農)", badgeClass: "bg-amber-600 text-white", mult: 1.0, desc: "為地主耕種，需繳交地租 (1949前為50%，三七五減租後為37.5%)。" },
+      owner_farmer: { name: "自耕農 (有地農民)", badgeClass: "bg-orange-600 text-white", mult: 1.2, desc: "耕者有其田後擁有自有土地，收成完全自得，免繳地租。" },
+      light_industry: { name: "輕工業工人 (加工出口區)", badgeClass: "bg-blue-600 text-white", mult: 1.45, desc: "在高雄加工出口區組裝家電與電子外銷，薪資穩定成長。" },
+      heavy_industry: { name: "重工業工人 (鋼鐵/造船/石化)", badgeClass: "bg-purple-600 text-white", mult: 1.8, desc: "十大建設推手，於中鋼、中船或石化廠工作，待遇豐厚但體力負荷大。" },
+      high_tech: { name: "高科技工業工程師 (晶圓半導體)", badgeClass: "bg-emerald-600 text-white", mult: 2.8, desc: "竹科無塵室中流砥柱，晶圓代工與IC設計，享高額股票分紅！" },
+      merchant: { name: "經商商人 / 自行創業", badgeClass: "bg-pink-600 text-white", mult: 1.5, desc: "自行開店創業，大順風時利潤翻倍，遇到風暴景氣差時利潤萎縮。" }
+    };
+
+    // 格式化貨幣顯示（含舊臺幣與新臺幣區分）
+    function formatMoney(amount, year) {
+      const cur = year < 1949 ? "舊臺幣" : "新臺幣";
+      return `${cur} $${Math.round(amount).toLocaleString()}`;
+    }
+
+    class VirtualPeer {
+      constructor(id) {
+        this.id = id || ('STU_' + Math.floor(Math.random() * 899999 + 100000));
+        this.handlers = {};
+        this.conns = {};
+
+        // 建立雙向通訊總線
+        this.busName = 'TW_ECON_SIMULATOR_CHANNEL';
+        try {
+          this.bc = new BroadcastChannel(this.busName);
+          this.bc.onmessage = (e) => this._onMessage(e.data);
+        } catch (err) {
+          this.bc = null;
+        }
+
+        // 兼備 localStorage 監聽作為備援
+        this._storageHandler = (e) => {
+          if (e.key === this.busName && e.newValue) {
+            try {
+              const msg = JSON.parse(e.newValue);
+              this._onMessage(msg);
+            } catch (_) {}
+          }
+        };
+        window.addEventListener('storage', this._storageHandler);
+
+        setTimeout(() => {
+          if (this.handlers['open']) this.handlers['open'](this.id);
+        }, 30);
+      }
+
+      on(event, fn) {
+        this.handlers[event] = fn;
+      }
+
+      _post(msg) {
+        if (this.bc) {
+          try { this.bc.postMessage(msg); } catch (_) {}
+        }
+        try {
+          localStorage.setItem(this.busName, JSON.stringify(Object.assign({}, msg, { _t: Date.now() + Math.random() })));
+        } catch (_) {}
+      }
+
+      _onMessage(msg) {
+        if (!msg || msg.from === this.id) return;
+        if (msg.to && msg.to !== this.id) return;
+
+        if (msg.type === '__CONNECT_REQ__') {
+          // 老師收到學生連線請求
+          const conn = new VirtualConnection(this.id, msg.from, { postMessage: (m) => this._post(m) });
+          this.conns[msg.from] = conn;
+          conn.open = true;
+          if (this.handlers['connection']) {
+            this.handlers['connection'](conn);
+          }
+          // 回覆確認封包
+          this._post({ type: '__CONNECT_ACK__', from: this.id, to: msg.from });
+          setTimeout(() => conn._triggerOpen(), 20);
+        } else if (msg.type === '__CONNECT_ACK__') {
+          // 學生收到老師回覆
+          const conn = this.conns[msg.from];
+          if (conn) {
+            conn._triggerOpen();
+          }
+        } else if (msg.type === '__DATA__') {
+          const conn = this.conns[msg.from];
+          if (conn) {
+            conn._triggerData(msg.payload);
+          }
+        } else if (msg.type === '__CLOSE__') {
+          const conn = this.conns[msg.from];
+          if (conn) {
+            conn._triggerClose();
+            delete this.conns[msg.from];
+          }
+        }
+      }
+
+      connect(targetHostId) {
+        const conn = new VirtualConnection(this.id, targetHostId, { postMessage: (m) => this._post(m) });
+        this.conns[targetHostId] = conn;
+
+        // 發送連線握手
+        const sendReq = () => {
+          this._post({
+            type: '__CONNECT_REQ__',
+            from: this.id,
+            to: targetHostId
+          });
+        };
+        sendReq();
+        const retryTimer = setTimeout(sendReq, 300);
+
+        // 3秒未連上視為代碼有誤
+        setTimeout(() => {
+          clearTimeout(retryTimer);
+          if (!conn.open && this.handlers['error']) {
+            this.handlers['error'](new Error('連線超時'));
+          }
+        }, 3200);
+
+        return conn;
+      }
+    }
+
+    // ==========================================================
+    // 全域變數
+    // ==========================================================
+    let peer = null;
+    let isHost = false;
+    let isGameLocked = false;
+    let hostConn = null;
+    const studentConns = {};
+    const studentsState = {};
+
+    let currentYearIndex = 0; // 0 對應 1945 年
+
+    // 學生端本機狀態 (初始 1945 年為 舊臺幣 $100,000)
+    let myStudentData = {
+      name: "",
+      role: "tenant_farmer",
+      education: "國小",
+      health: 100,
+      wealth: 100000,
+      lastNotice: null,
+      isLocked: false
+    };
+
+    // 自動填入 URL 房號
+    window.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const room = urlParams.get('room');
+      if (room) {
+        document.getElementById('inputRoomCode').value = room.toUpperCase();
+      }
+    });
+
+    // 簡易客製化 Modal (無 alert / confirm)
+    function showModal(title, msg, onOk = null) {
+      document.getElementById('modalTitle').innerText = title;
+      document.getElementById('modalMsg').innerHTML = msg;
+      const modal = document.getElementById('customModal');
+      modal.classList.remove('hidden');
+
+      const okBtn = document.getElementById('modalBtnOk');
+      okBtn.onclick = () => {
+        modal.classList.add('hidden');
+        if (onOk) onOk();
+      };
+    }
+
+    // ==========================================================
+    // 老師端 (HOST) 邏輯
+    // ==========================================================
+    let currentRoomCode = '';
+
+    function startAsHost() {
+      isHost = true;
+      const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+      let code = '';
+      for (let i = 0; i < 4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+      currentRoomCode = code;
+
+      const peerId = 'TW-ECON-' + code;
+      // 使用 VirtualPeer 避開 WebSocket SecurityError
+      peer = new VirtualPeer(peerId);
+
+      peer.on('open', () => {
+        document.getElementById('entrySection').classList.add('hidden');
+        document.getElementById('hostSection').classList.remove('hidden');
+        document.getElementById('roomInfo').classList.remove('hidden');
+        document.getElementById('btnSpawnBots').classList.remove('hidden');
+        document.getElementById('btnLockRoom').classList.remove('hidden');
+        document.getElementById('btnFastForward').classList.remove('hidden');
+        document.getElementById('btnNextRound').classList.remove('hidden');
+        document.getElementById('roleBadge').innerText = '老師主控大螢幕';
+        document.getElementById('roleBadge').className = 'text-xs px-2.5 py-0.5 rounded-full font-semibold bg-indigo-600 text-white';
+
+        document.getElementById('displayRoomCode').innerText = code;
+        document.getElementById('hostRoomCodeDisplay').innerText = code;
+        updateHostYearDisplay();
+
+        const joinUrl = `${window.location.origin}${window.location.pathname}?room=${code}`;
+        new QRCode(document.getElementById("qrcode"), {
+          text: joinUrl,
+          width: 72,
+          height: 72
+        });
+      });
+
+      peer.on('connection', (conn) => {
+        if (isGameLocked) {
+          conn.close();
+          return;
+        }
+
+        conn.on('open', () => {
+          studentConns[conn.peer] = conn;
+        });
+
+        conn.on('data', (data) => {
+          handleHostReceivedData(conn.peer, data);
+        });
+
+        conn.on('close', () => {
+          delete studentConns[conn.peer];
+          delete studentsState[conn.peer];
+          renderHostDashboard();
+        });
+      });
+    }
+
+    // 在新分頁開啟學生端
+    function hostOpenStudentTab() {
+      if (!currentRoomCode) return;
+      const url = `${window.location.origin}${window.location.pathname}?room=${currentRoomCode}`;
+      window.open(url, '_blank');
+    }
+
+    function lockAndStartGame() {
+      isGameLocked = true;
+      document.getElementById('hostLobbyCard').classList.add('hidden');
+      document.getElementById('headerRoomCodeBox').classList.add('hidden');
+      document.getElementById('btnLockRoom').classList.add('hidden');
+      document.getElementById('btnSpawnBots').classList.add('hidden');
+      showModal('代碼已鎖定', '房間已鎖定代碼，遊戲正式開始！');
+    }
+
+    // 🤖 一鍵產生 4 位測試學生 (方便單機預覽)
+    function hostSpawnBots() {
+      const botConfigs = [
+        { name: "01 佃農老實人(阿發)", personality: "HARD_WORKER" },
+        { name: "02 志在科技(小美)", personality: "SCHOLAR" },
+        { name: "03 經商冒險家(阿財)", personality: "MERCHANT" },
+        { name: "04 平安長壽族(阿順)", personality: "EASY_GOING" }
+      ];
+
+      botConfigs.forEach((bot, idx) => {
+        const fakeId = "BOT_" + (idx + 1);
+        if (!studentsState[fakeId]) {
+          studentsState[fakeId] = {
+            name: bot.name,
+            role: "tenant_farmer",
+            education: "國小",
+            health: 100,
+            wealth: 100000, // 舊臺幣初始
+            readyYearIndex: currentYearIndex,
+            choice: null,
+            isBot: true,
+            personality: bot.personality
+          };
+        }
+      });
+
+      renderHostDashboard();
+      showModal('測試學生已就位', '已成功注入 4 位不同性格之虛擬測試學生！您可直接點擊「結算下一年」測試觀察。');
+    }
+
+    function updateHostYearDisplay() {
+      const curData = TIMELINE_DATA[currentYearIndex];
+      document.getElementById('displayYear').innerText = curData.year;
+      document.getElementById('hostEraBadge').innerText = curData.era;
+      document.getElementById('displayCurrencyTag').innerText = curData.currency;
+      document.getElementById('hostBaseIncomeDisplay').innerText = formatMoney(curData.baseIncome, curData.year);
+      document.getElementById('hostEventTitle').innerText = `${curData.year}年：${curData.title}`;
+      document.getElementById('hostEventDesc').innerText = curData.desc;
+
+      const msTag = document.getElementById('hostMilestoneTag');
+      if (curData.isMilestone) msTag.classList.remove('hidden');
+      else msTag.classList.add('hidden');
+
+      // 規則解說更新
+      const ruleNote = document.getElementById('hostRuleNote');
+      if (curData.year < 1949) {
+        ruleNote.innerHTML = `【舊臺幣惡性通膨時期】物價飛漲！佃農需扣除高達 <strong class="text-rose-600 font-bold">50%</strong> 收成做為地租。除讀書外，所有人皆需扣除 <strong class="text-slate-800 font-bold">80% 基本生活開銷</strong>（約 ${formatMoney(curData.baseIncome * 0.8, curData.year)}）。`;
+      } else if (curData.year === 1949) {
+        ruleNote.innerHTML = `【四萬換一塊幣制改革】原存款除以 40,000 改發新臺幣！三七五減租實施中，佃農地租降為 <strong class="text-emerald-600 font-bold">37.5%</strong>。除讀書外需扣除 <strong class="text-slate-800 font-bold">80% 基本生活開銷</strong>。`;
+      } else {
+        ruleNote.innerHTML = `三七五減租實施中，佃農地租為 <strong class="text-emerald-600 font-bold">37.5%</strong>（自耕農與工商業免繳地租）。所有人需扣除 <strong class="text-slate-800 font-bold">80% 基本生活開銷</strong>（約 ${formatMoney(curData.baseIncome * 0.8, curData.year)}）。`;
+      }
+
+      // 解鎖工種更新
+      const unlockNote = document.getElementById('hostUnlockNote');
+      let unlockedNames = curData.unlockRoles.map(r => ROLES[r].name).join('、');
+      if (!unlockedNames) unlockedNames = "傳統農業為主（佃農）";
+      unlockNote.innerHTML = `本歷史階段解鎖/主流工種：<strong class="text-indigo-700">${unlockedNames}</strong>。`;
+
+      renderHostDashboard();
+    }
+
+    function handleHostReceivedData(peerId, data) {
+      if (data.type === 'JOIN') {
+        studentsState[peerId] = {
+          name: data.name,
+          role: "tenant_farmer",
+          education: "國小",
+          health: 100,
+          wealth: currentYearIndex < 4 ? 100000 : 200, // 1949前為舊臺幣
+          readyYearIndex: -1,
+          choice: null,
+          isBot: false
+        };
+
+        broadcastToStudent(peerId, {
+          type: 'SYNC_YEAR',
+          yearIndex: currentYearIndex,
+          timelineItem: TIMELINE_DATA[currentYearIndex],
+          studentData: studentsState[peerId]
+        });
+        renderHostDashboard();
+      } else if (data.type === 'SUBMIT_DECISION') {
+        const s = studentsState[peerId];
+        if (s) {
+          s.readyYearIndex = currentYearIndex;
+          s.choice = data.choice;
+        }
+        renderHostDashboard();
+      }
+    }
+
+    function broadcastToStudent(peerId, msg) {
+      if (studentConns[peerId] && studentConns[peerId].open) {
+        studentConns[peerId].send(msg);
+      }
+    }
+
+    function broadcastToAll(msg) {
+      for (let peerId in studentConns) {
+        broadcastToStudent(peerId, msg);
+      }
+    }
+
+    function renderHostDashboard() {
+      const keys = Object.keys(studentsState);
+      const total = keys.length;
+      const readyCount = keys.filter(k => studentsState[k].readyYearIndex === currentYearIndex).length;
+
+      document.getElementById('hostProgressCount').innerText = `${readyCount} / ${total} 人已完成`;
+      const pct = total > 0 ? (readyCount / total) * 100 : 0;
+      document.getElementById('hostProgressBar').style.width = `${pct}%`;
+
+      // 學生姓名與繳交標籤
+      const roster = document.getElementById('hostStudentRoster');
+      roster.innerHTML = '';
+      keys.forEach(k => {
+        const s = studentsState[k];
+        const isDone = s.readyYearIndex === currentYearIndex;
+        const tag = document.createElement('span');
+        tag.className = `text-[10px] px-2 py-0.5 rounded-full font-medium border whitespace-nowrap ${isDone ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-slate-100 text-slate-500 border-slate-200'}`;
+        tag.innerText = `${s.name}${isDone ? ' ✓' : ''}`;
+        roster.appendChild(tag);
+      });
+
+      // 人口結構普查
+      const census = { tenant_farmer: 0, owner_farmer: 0, light_industry: 0, heavy_industry: 0, high_tech: 0, merchant: 0 };
+      keys.forEach(k => {
+        const r = studentsState[k].role;
+        if (census[r] !== undefined) census[r]++;
+      });
+
+      document.getElementById('census_tenant').innerText = census.tenant_farmer;
+      document.getElementById('census_owner').innerText = census.owner_farmer;
+      document.getElementById('census_light').innerText = census.light_industry;
+      document.getElementById('census_heavy').innerText = census.heavy_industry;
+      document.getElementById('census_tech').innerText = census.high_tech;
+      document.getElementById('census_biz').innerText = census.merchant;
+
+      // 即時財富排名
+      renderHostTopRanking();
+    }
+
+    function renderHostTopRanking() {
+      const container = document.getElementById('hostTopRanking');
+      container.innerHTML = '';
+      const list = Object.values(studentsState);
+      list.sort((a, b) => b.wealth - a.wealth);
+
+      const curYear = TIMELINE_DATA[currentYearIndex].year;
+      list.slice(0, 8).forEach((item, idx) => {
+        const div = document.createElement('div');
+        div.className = 'p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex justify-between items-center text-xs';
+        div.innerHTML = `
+          <div>
+            <div class="font-bold text-slate-800">${idx + 1}. ${item.name}</div>
+            <div class="text-[10px] text-slate-500">${ROLES[item.role].name} ｜ ${item.education} ｜ ❤️${item.health}</div>
+          </div>
+          <div class="text-right font-black text-emerald-700 font-mono text-sm">
+            ${formatMoney(item.wealth, curYear)}
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    // 老師主控確認下一年
+    function hostNextRoundPrompt() {
+      showModal(
+        '確認結算推進',
+        `即將結算 <strong>${TIMELINE_DATA[currentYearIndex].year}年</strong> 的全班收支與健康，並推進至下一年。未送出的同學將以「一般工作」自動結算。確定執行嗎？`,
+        () => { settleYearAndAdvance(true); }
+      );
+    }
+
+    // 快轉至下個重大節點
+    function hostFastForwardMilestone() {
+      let targetIdx = -1;
+      for (let i = currentYearIndex + 1; i < TIMELINE_DATA.length; i++) {
+        if (TIMELINE_DATA[i].isMilestone) {
+          targetIdx = i;
+          break;
+        }
+      }
+      if (targetIdx === -1) {
+        showModal('已至終點', '已經抵達 2000 年千禧年！');
+        return;
+      }
+
+      showModal(
+        '快轉推進確認',
+        `即將自動連續逐年結算，快速前往下個重大事件節點：<strong>${TIMELINE_DATA[targetIdx].year} 年【${TIMELINE_DATA[targetIdx].title}】</strong>！`,
+        () => {
+          while (currentYearIndex < targetIdx) {
+            settleYearAndAdvance(false);
+          }
+          updateHostYearDisplay();
+          syncAllStudents();
+        }
+      );
+    }
+
+    // 核心結算年算法 (包含 1949 四萬換一塊幣制改革、租金、80%生活開銷、學費、健康增減、住院機制)
+    function settleYearAndAdvance(doBroadcast = true) {
+      const curData = TIMELINE_DATA[currentYearIndex];
+      const isOldTwdYear = curData.year < 1949;
+
+      // 遍歷所有學生（包含真人與虛擬Bot）
+      for (let peerId in studentsState) {
+        const s = studentsState[peerId];
+
+        // 若為測試 Bot，自動依性格產生決策
+        if (s.isBot) {
+          s.choice = generateBotChoice(s, curData);
+        }
+
+        const choice = s.choice || { action: 'NORMAL', newRole: 'KEEP' };
+
+        // 1. 處理轉職申請
+        if (choice.newRole && choice.newRole !== 'KEEP' && ROLES[choice.newRole]) {
+          if (choice.newRole === 'high_tech' && s.education !== '大學') {
+            // 不得轉職
+          } else {
+            s.role = choice.newRole;
+          }
+        }
+
+        // 2. 計算基本年薪與歷史加乘
+        const roleConfig = ROLES[s.role];
+        let roleBonusKey = 'lightBonus';
+        if (s.role === 'tenant_farmer') roleBonusKey = 'tenantBonus';
+        else if (s.role === 'owner_farmer') roleBonusKey = 'ownerBonus';
+        else if (s.role === 'heavy_industry') roleBonusKey = 'heavyBonus';
+        else if (s.role === 'high_tech') roleBonusKey = 'techBonus';
+        else if (s.role === 'merchant') roleBonusKey = 'bizBonus';
+
+        const eraBonus = curData.impact[roleBonusKey] || 1.0;
+        let standardGross = Math.round(curData.baseIncome * roleConfig.mult * eraBonus);
+
+        let grossIncome = 0;
+        let rent = 0;
+        let expense = Math.round(curData.baseIncome * 0.8); // 80% 基本生活開銷
+        let tuition = 0;
+        let hpDelta = 0;
+        let actionNote = "";
+
+        // 計算求學學費（依幣制區分）
+        let tuitionMiddle = isOldTwdYear ? 80000 : 2000;
+        let tuitionCollege = isOldTwdYear ? 200000 : 5000;
+        let tuitionGrad = isOldTwdYear ? 120000 : 3000;
+
+        if (choice.action === 'STUDY') {
+          // 讀書：年收降為 0，需付學費，免除一般開銷，健康+5
+          grossIncome = 0;
+          rent = 0;
+          expense = 0;
+          hpDelta = +5;
+
+          if (s.education === '國小') {
+            tuition = tuitionMiddle;
+            if (s.wealth >= tuition) {
+              s.education = '中學';
+              actionNote = `支付學費 ${formatMoney(tuition, curData.year)}，取得【中學學歷】！`;
+            } else {
+              tuition = 0;
+              actionNote = `存款不足學費，留在國小學歷。`;
+            }
+          } else if (s.education === '中學') {
+            tuition = tuitionCollege;
+            if (s.wealth >= tuition) {
+              s.education = '大學';
+              actionNote = `支付學費 ${formatMoney(tuition, curData.year)}，榮登【大學學歷】！取得高科技工程師門票！`;
+            } else {
+              tuition = 0;
+              actionNote = `存款不足學費，留在中學學歷。`;
+            }
+          } else {
+            tuition = tuitionGrad;
+            actionNote = `大學深造研發，繳納研修學費 ${formatMoney(tuition, curData.year)}！`;
+          }
+        } else {
+          // 工作模式：HARD / NORMAL / EASY
+          if (choice.action === 'HARD') {
+            grossIncome = Math.round(standardGross * 1.4);
+            hpDelta = -15;
+            actionNote = `努力拚命加班（年薪加成 40%，健康 -15）`;
+          } else if (choice.action === 'EASY') {
+            grossIncome = Math.round(standardGross * 0.7);
+            hpDelta = +12;
+            actionNote = `輕鬆工作減壓（收入減少 30%，健康 +12）`;
+          } else {
+            grossIncome = standardGross;
+            hpDelta = -2;
+            actionNote = `一般正常工時（標準薪資，健康 -2）`;
+          }
+
+          // 地租扣除：僅佃農需繳租 (1949前 50%，1949後 37.5%)
+          if (s.role === 'tenant_farmer') {
+            const rentRate = curData.year < 1949 ? 0.50 : 0.375;
+            rent = Math.round(grossIncome * rentRate);
+          } else {
+            rent = 0;
+          }
+        }
+
+        // 當期結算淨儲蓄
+        const netSavings = grossIncome - rent - expense - tuition;
+        s.wealth = Math.max(0, s.wealth + netSavings);
+
+        // 健康度更新
+        s.health = Math.min(100, Math.max(0, s.health + hpDelta));
+
+        // 過勞住院檢查
+        let hospitalNote = "";
+        if (s.health <= 0) {
+          const medCost = Math.round(curData.baseIncome * 0.5);
+          s.wealth = Math.max(0, s.wealth - medCost);
+          s.health = 30; // 恢復至 30
+          hospitalNote = `⚠️ 警告：因過勞體力耗盡入院搶救，扣除醫藥費 ${formatMoney(medCost, curData.year)}，健康度重置為 30 點！`;
+        }
+
+        // 貨幣改革：若即將進入 1949 年（當前為 1948 年結算完成時）
+        let currencyReformNote = "";
+        if (curData.year === 1948) {
+          const oldWealth = s.wealth;
+          s.wealth = Math.max(1, Math.round(s.wealth / 40000));
+          currencyReformNote = `【1949年6月重大事件：四萬換一塊】政府發行新臺幣！原存款舊臺幣 $${oldWealth.toLocaleString()}，依 40,000 : 1 兌換為新臺幣 $${s.wealth.toLocaleString()}！`;
+        }
+
+        // 保存給學生的財務對帳單
+        s.lastNotice = {
+          year: curData.year,
+          roleName: roleConfig.name,
+          grossIncome: grossIncome,
+          rent: rent,
+          expense: expense,
+          tuition: tuition,
+          netSavings: netSavings,
+          hpDelta: hpDelta,
+          actionNote: actionNote,
+          hospitalNote: hospitalNote,
+          currencyReformNote: currencyReformNote
+        };
+
+        // 重置決策
+        s.choice = null;
+        s.readyYearIndex = -1;
+      }
+
+      // 檢查是否結束 (2000年)
+      if (currentYearIndex >= TIMELINE_DATA.length - 1) {
+        const rankings = calculateRankings();
+        renderLeaderboardUI(rankings);
+        broadcastToAll({
+          type: 'GAME_OVER',
+          rankings: rankings
+        });
+        return;
+      }
+
+      currentYearIndex++;
+      if (doBroadcast) {
+        updateHostYearDisplay();
+        syncAllStudents();
+      }
+    }
+
+    // 🤖 測試學生性格決策邏輯
+    function generateBotChoice(s, curData) {
+      const unlocked = curData.unlockRoles || [];
+      let newRole = 'KEEP';
+      let action = 'NORMAL';
+      const isOldTwdYear = curData.year < 1949;
+      const tMiddle = isOldTwdYear ? 80000 : 2000;
+      const tCollege = isOldTwdYear ? 200000 : 5000;
+
+      if (s.personality === 'SCHOLAR') {
+        if (s.education === '國小' && s.wealth >= tMiddle) action = 'STUDY';
+        else if (s.education === '中學' && s.wealth >= tCollege) action = 'STUDY';
+        else {
+          action = 'NORMAL';
+          if (s.education === '大學' && unlocked.includes('high_tech') && s.role !== 'high_tech') newRole = 'high_tech';
+          else if (unlocked.includes('light_industry') && s.role === 'tenant_farmer') newRole = 'light_industry';
+        }
+      } else if (s.personality === 'HARD_WORKER') {
+        action = s.health < 35 ? 'EASY' : 'HARD';
+        if (unlocked.includes('heavy_industry') && s.role !== 'heavy_industry') newRole = 'heavy_industry';
+        else if (unlocked.includes('light_industry') && s.role === 'tenant_farmer') newRole = 'light_industry';
+        else if (unlocked.includes('owner_farmer') && s.role === 'tenant_farmer') newRole = 'owner_farmer';
+      } else if (s.personality === 'MERCHANT') {
+        action = 'NORMAL';
+        if (unlocked.includes('merchant') && s.role !== 'merchant') newRole = 'merchant';
+        else if (unlocked.includes('owner_farmer') && s.role === 'tenant_farmer') newRole = 'owner_farmer';
+      } else {
+        action = s.health < 80 ? 'EASY' : 'NORMAL';
+        if (unlocked.includes('owner_farmer') && s.role === 'tenant_farmer') newRole = 'owner_farmer';
+      }
+
+      return { action: action, newRole: newRole };
+    }
+
+    function syncAllStudents() {
+      for (let peerId in studentConns) {
+        const s = studentsState[peerId];
+        broadcastToStudent(peerId, {
+          type: 'SYNC_YEAR',
+          yearIndex: currentYearIndex,
+          timelineItem: TIMELINE_DATA[currentYearIndex],
+          studentData: s
+        });
+      }
+    }
+
+    function calculateRankings() {
+      const list = Object.values(studentsState).map(s => ({
+        name: s.name,
+        role: ROLES[s.role].name,
+        education: s.education,
+        health: s.health,
+        wealth: Math.round(s.wealth)
+      }));
+      list.sort((a, b) => b.wealth - a.wealth);
+      return list;
+    }
+
+    // ==========================================================
+    // 學生端 (STUDENT) 邏輯
+    // ==========================================================
+    function joinAsStudent() {
+      const code = document.getElementById('inputRoomCode').value.trim().toUpperCase();
+      const name = document.getElementById('inputStudentName').value.trim();
+
+      if (!code || code.length !== 4) return showModal('輸入錯誤', '請輸入正確的 4 位數房間驗證碼！');
+      if (!name) return showModal('輸入錯誤', '請輸入您的座號與暱稱！');
+
+      myStudentData.name = name;
+      peer = new VirtualPeer();
+
+      peer.on('open', () => {
+        const targetHostId = 'TW-ECON-' + code;
+        hostConn = peer.connect(targetHostId);
+
+        hostConn.on('open', () => {
+          hostConn.send({ type: 'JOIN', name: name });
+
+          document.getElementById('entrySection').classList.add('hidden');
+          document.getElementById('studentSection').classList.remove('hidden');
+          document.getElementById('roomInfo').classList.remove('hidden');
+          document.getElementById('displayRoomCode').innerText = code;
+          document.getElementById('roleBadge').innerText = '學生連線中';
+          document.getElementById('roleBadge').className = 'text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-600 text-white';
+          document.getElementById('stuPlayerName').innerText = name;
+        });
+
+        hostConn.on('data', (data) => {
+          handleStudentReceivedData(data);
+        });
+
+        hostConn.on('close', () => {
+          showModal('連線中斷', '與老師大螢幕主控台之連線已中斷。');
+        });
+      });
+
+      peer.on('error', (err) => {
+        showModal('連線失敗', `找不到房號【${code}】的大螢幕！請確認代碼是否輸入正確，或確認老師端已建立房間。`);
+      });
+    }
+
+    function handleStudentReceivedData(data) {
+      if (data.type === 'SYNC_YEAR') {
+        currentYearIndex = data.yearIndex;
+        const timelineItem = data.timelineItem;
+        const s = data.studentData;
+
+        myStudentData.role = s.role;
+        myStudentData.education = s.education;
+        myStudentData.health = s.health;
+        myStudentData.wealth = s.wealth;
+        myStudentData.lastNotice = s.lastNotice;
+        myStudentData.isLocked = false;
+
+        document.getElementById('displayYear').innerText = timelineItem.year;
+        document.getElementById('displayCurrencyTag').innerText = timelineItem.currency;
+        renderStudentUI(timelineItem);
+      } else if (data.type === 'GAME_OVER') {
+        renderLeaderboardUI(data.rankings);
+      }
+    }
+
+    function renderStudentUI(timelineItem) {
+      document.getElementById('stuYearDisplay').innerText = `${timelineItem.year} 年`;
+      document.getElementById('stuRoleName').innerText = ROLES[myStudentData.role].name;
+      document.getElementById('stuEduDisplay').innerText = myStudentData.education;
+      document.getElementById('stuWealthDisplay').innerText = formatMoney(myStudentData.wealth, timelineItem.year);
+      
+      // 健康度 Bar 更新
+      document.getElementById('stuHpNum').innerText = `${myStudentData.health}/100`;
+      const hpBar = document.getElementById('stuHpBar');
+      hpBar.style.width = `${myStudentData.health}%`;
+      if (myStudentData.health > 50) hpBar.className = 'h-full bg-emerald-500 hp-transition';
+      else if (myStudentData.health > 25) hpBar.className = 'h-full bg-amber-500 hp-transition';
+      else hpBar.className = 'h-full bg-rose-600 hp-transition';
+
+      // 上年度詳細財務對帳單
+      const noticeBox = document.getElementById('stuAnnualNotice');
+      if (myStudentData.lastNotice) {
+        noticeBox.classList.remove('hidden');
+        const n = myStudentData.lastNotice;
+        document.getElementById('stuNoticeYear').innerText = n.year;
+        const netSign = n.netSavings >= 0 ? '+' : '';
+        const netColor = n.netSavings >= 0 ? 'text-emerald-700' : 'text-rose-600';
+        document.getElementById('stuNoticeNetText').innerHTML = `<span class="${netColor}">${netSign}${formatMoney(n.netSavings, n.year)}</span>`;
+
+        let detailHtml = `
+          <div>💼 工作模式：<strong>${n.actionNote}</strong></div>
+          <div>💰 本業毛收入：${formatMoney(n.grossIncome, n.year)}</div>
+        `;
+        if (n.rent > 0) {
+          detailHtml += `<div>🌾 扣除田地地租：-${formatMoney(n.rent, n.year)}</div>`;
+        }
+        if (n.expense > 0) {
+          detailHtml += `<div>🍞 扣除生活基本開銷 (80%)：-${formatMoney(n.expense, n.year)}</div>`;
+        }
+        if (n.tuition > 0) {
+          detailHtml += `<div>🎓 扣除升學進修學費：-${formatMoney(n.tuition, n.year)}</div>`;
+        }
+        const hpColor = n.hpDelta >= 0 ? 'text-emerald-600' : 'text-rose-600';
+        detailHtml += `<div>❤️ 健康變化：<span class="${hpColor} font-bold font-mono">${n.hpDelta >= 0 ? '+' : ''}${n.hpDelta}</span> 點</div>`;
+        
+        if (n.currencyReformNote) {
+          detailHtml += `<div class="p-1.5 bg-amber-100 border border-amber-300 text-amber-900 rounded font-bold">${n.currencyReformNote}</div>`;
+        }
+        if (n.hospitalNote) {
+          detailHtml += `<div class="p-1.5 bg-rose-100 border border-rose-300 text-rose-800 rounded font-bold">${n.hospitalNote}</div>`;
+        }
+        document.getElementById('stuNoticeDetail').innerHTML = detailHtml;
+      } else {
+        noticeBox.classList.add('hidden');
+      }
+
+      // 歷史事件提示
+      document.getElementById('stuEraTag').innerText = timelineItem.era;
+      document.getElementById('stuEventTitle').innerText = `${timelineItem.year}年：${timelineItem.title}`;
+      document.getElementById('stuEventDesc').innerText = timelineItem.desc;
+
+      const nodeAlert = document.getElementById('stuNodeAlert');
+      if (timelineItem.isMilestone) nodeAlert.classList.remove('hidden');
+      else nodeAlert.classList.add('hidden');
+
+      // 讀書學費與存款限制檢驗（依幣制計算）
+      const isOldTwdYear = timelineItem.year < 1949;
+      let requiredTuition = 0;
+      let targetEdu = "";
+      if (myStudentData.education === '國小') {
+        requiredTuition = isOldTwdYear ? 80000 : 2000;
+        targetEdu = "考取【中學學歷】";
+      } else if (myStudentData.education === '中學') {
+        requiredTuition = isOldTwdYear ? 200000 : 5000;
+        targetEdu = "考取【大學學歷】(日後成為高科技工程師門檻！)";
+      } else {
+        requiredTuition = isOldTwdYear ? 120000 : 3000;
+        targetEdu = "深造大學進修研發";
+      }
+
+      document.getElementById('stuStudyCostBadge').innerText = `學費 ${formatMoney(requiredTuition, timelineItem.year)}`;
+      document.getElementById('stuStudyDesc').innerHTML = `支付學費，${targetEdu}。本年度年收為 0。`;
+
+      const radioStudy = document.getElementById('radioStudy');
+      const studyLabel = document.getElementById('stuStudyOptionLabel');
+      const studyAlert = document.getElementById('stuStudyAlert');
+
+      // 嚴格檢驗：如果存款不足學費，禁止去讀書
+      if (myStudentData.wealth < requiredTuition) {
+        radioStudy.disabled = true;
+        studyLabel.classList.add('opacity-50', 'bg-slate-100', 'cursor-not-allowed');
+        studyAlert.classList.remove('hidden');
+        studyAlert.innerText = `⚠️ 存款 (${formatMoney(myStudentData.wealth, timelineItem.year)}) 不足支付學費 (${formatMoney(requiredTuition, timelineItem.year)})，目前無法選擇讀書！`;
+      } else {
+        radioStudy.disabled = false;
+        studyLabel.classList.remove('opacity-50', 'bg-slate-100', 'cursor-not-allowed');
+        studyAlert.classList.add('hidden');
+      }
+
+      // 重大節點轉職下拉選單
+      const sel = document.getElementById('stuCareerChoice');
+      sel.innerHTML = `<option value="KEEP">維持目前職業：${ROLES[myStudentData.role].name}</option>`;
+      const unlocked = timelineItem.unlockRoles || [];
+
+      // 自耕農
+      if (unlocked.includes('owner_farmer') && myStudentData.role === 'tenant_farmer') {
+        sel.innerHTML += `<option value="owner_farmer">🌟 配合土地改革：轉職為【自耕農】(免繳地租)</option>`;
+      }
+      // 輕工業工人
+      if (unlocked.includes('light_industry') && myStudentData.role !== 'light_industry') {
+        sel.innerHTML += `<option value="light_industry">🏭 前往加工出口區：轉職為【輕工業工人】</option>`;
+      }
+      // 重工業工人
+      if (unlocked.includes('heavy_industry') && myStudentData.role !== 'heavy_industry') {
+        sel.innerHTML += `<option value="heavy_industry">🏗️ 響應十大建設：轉職為【重工業工人】</option>`;
+      }
+      // 高科技工業 (嚴格大學學歷限制)
+      if (unlocked.includes('high_tech') && myStudentData.role !== 'high_tech') {
+        if (myStudentData.education === '大學') {
+          sel.innerHTML += `<option value="high_tech">💻 進駐新竹科學園區：轉職為【高科技工程師】(具備大學學歷-符合)</option>`;
+        } else {
+          sel.innerHTML += `<option value="high_tech" disabled>❌ 高科技工程師 (必須具備大學以上學歷，請先讀書升學！)</option>`;
+        }
+      }
+      // 經商商人
+      if (unlocked.includes('merchant') && myStudentData.role !== 'merchant') {
+        sel.innerHTML += `<option value="merchant">💼 開店經商：轉職為【創業商人】</option>`;
+      }
+
+      // 控制面板顯示
+      const actionCard = document.getElementById('stuActionCard');
+      const waitCard = document.getElementById('stuWaitCard');
+      if (myStudentData.isLocked) {
+        actionCard.classList.add('hidden');
+        waitCard.classList.remove('hidden');
+      } else {
+        actionCard.classList.remove('hidden');
+        waitCard.classList.add('hidden');
+      }
+    }
+
+    function stuSubmitDecision() {
+      if (!hostConn || !hostConn.open) {
+        return showModal('尚未連線', '尚未連線至大螢幕主控台！');
+      }
+
+      const action = document.querySelector('input[name="stuAction"]:checked').value;
+      const newRole = document.getElementById('stuCareerChoice').value;
+
+      myStudentData.isLocked = true;
+      hostConn.send({
+        type: 'SUBMIT_DECISION',
+        choice: {
+          action: action,
+          newRole: newRole
+        }
+      });
+
+      document.getElementById('stuActionCard').classList.add('hidden');
+      document.getElementById('stuWaitCard').classList.remove('hidden');
+    }
+
+    // ==========================================================
+    // 2000年千禧年 最終決算排行榜 (全體同步)
+    // ==========================================================
+    function renderLeaderboardUI(rankings) {
+      document.getElementById('hostSection').classList.add('hidden');
+      document.getElementById('studentSection').classList.add('hidden');
+      document.getElementById('leaderboardSection').classList.remove('hidden');
+
+      const medals = ['🥇 第一名', '🥈 第二名', '🥉 第三名', '第 4 名', '第 5 名', '第 6 名', '第 7 名', '第 8 名'];
+      const tbody = document.getElementById('leaderboardBody');
+      tbody.innerHTML = '';
+
+      rankings.forEach((item, idx) => {
+        const tr = document.createElement('tr');
+        if (idx === 0) tr.className = 'bg-amber-100 font-black text-amber-950';
+        else if (idx < 3) tr.className = 'bg-amber-50/70 font-bold';
+
+        tr.innerHTML = `
+          <td class="p-2.5 text-center font-bold">${medals[idx] || (idx + 1)}</td>
+          <td class="p-2.5 font-bold">${item.name}</td>
+          <td class="p-2.5">${item.role}</td>
+          <td class="p-2.5 text-indigo-700 font-semibold">${item.education}</td>
+          <td class="p-2.5 text-center font-mono">❤️ ${item.health}</td>
+          <td class="p-2.5 text-right font-black text-emerald-600 font-mono text-sm">${formatMoney(item.wealth, 2000)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+  </script>
+</body>
+</html>
