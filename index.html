@@ -6,6 +6,8 @@
   <title>走過半世紀：臺灣戰後經濟轉型人生模擬 (1945-2000)</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PeerJS 官方 WebRTC 跨裝置連線庫 (支援 GitHub Pages 跨手機/跨電腦連線) -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <!-- QR Code 庫 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
@@ -73,7 +75,7 @@
           <div class="space-y-2.5">
             <input type="text" id="inputRoomCode" placeholder="請輸入 4 位房間代碼" maxlength="4" class="w-full px-3 py-2 text-center tracking-widest font-black uppercase text-lg border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-mono" />
             <input type="text" id="inputStudentName" placeholder="請輸入座號與暱稱 (例如：07 許大明)" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white" />
-            <button onclick="joinAsStudent()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-lg transition shadow text-sm">連線登入角色</button>
+            <button id="btnStudentJoin" onclick="joinAsStudent()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-lg transition shadow text-sm">連線登入角色</button>
           </div>
         </div>
 
@@ -647,169 +649,6 @@
     }
 
     // ==========================================================
-    // 實作完整的虛擬連線層 (VirtualConnection + VirtualPeer)
-    // 徹底解決 ReferenceError，支援同頁面即時互通與跨分頁通訊
-    // ==========================================================
-    class VirtualConnection {
-      constructor(localId, remoteId, bus) {
-        this.peer = remoteId;
-        this.localId = localId;
-        this.bus = bus;
-        this.open = false;
-        this.handlers = {};
-      }
-      on(event, fn) {
-        this.handlers[event] = fn;
-      }
-      send(data) {
-        this.bus.postMessage({
-          type: '__DATA__',
-          from: this.localId,
-          to: this.peer,
-          payload: data
-        });
-      }
-      close() {
-        this.open = false;
-        this.bus.postMessage({
-          type: '__CLOSE__',
-          from: this.localId,
-          to: this.peer
-        });
-        this._triggerClose();
-      }
-      _triggerOpen() {
-        if (!this.open) {
-          this.open = true;
-          if (this.handlers['open']) this.handlers['open']();
-        }
-      }
-      _triggerData(data) {
-        if (this.handlers['data']) this.handlers['data'](data);
-      }
-      _triggerClose() {
-        if (this.open) {
-          this.open = false;
-          if (this.handlers['close']) this.handlers['close']();
-        }
-      }
-    }
-
-    // 虛擬 P2P 連線管理器
-    window._virtualPeers = window._virtualPeers || {};
-
-    class VirtualPeer {
-      constructor(id) {
-        this.id = id || ('STU_' + Math.floor(Math.random() * 899999 + 100000));
-        this.handlers = {};
-        this.conns = {};
-
-        window._virtualPeers[this.id] = this;
-
-        this.busName = 'TW_ECON_SIMULATOR_CHANNEL';
-        try {
-          this.bc = new BroadcastChannel(this.busName);
-          this.bc.onmessage = (e) => this._onMessage(e.data);
-        } catch (err) {
-          this.bc = null;
-        }
-
-        this._storageHandler = (e) => {
-          if (e.key === this.busName && e.newValue) {
-            try {
-              const msg = JSON.parse(e.newValue);
-              this._onMessage(msg);
-            } catch (_) {}
-          }
-        };
-        window.addEventListener('storage', this._storageHandler);
-
-        setTimeout(() => {
-          if (this.handlers['open']) this.handlers['open'](this.id);
-        }, 15);
-      }
-
-      on(event, fn) {
-        this.handlers[event] = fn;
-      }
-
-      _post(msg) {
-        // 同頁面直連派發 (零延遲)
-        for (let pid in window._virtualPeers) {
-          if (pid !== this.id) {
-            const targetPeer = window._virtualPeers[pid];
-            setTimeout(() => targetPeer._onMessage(msg), 5);
-          }
-        }
-        // 跨分頁廣播
-        if (this.bc) {
-          try { this.bc.postMessage(msg); } catch (_) {}
-        }
-        try {
-          localStorage.setItem(this.busName, JSON.stringify(Object.assign({}, msg, { _t: Date.now() + Math.random() })));
-        } catch (_) {}
-      }
-
-      _onMessage(msg) {
-        if (!msg || msg.from === this.id) return;
-        if (msg.to && msg.to !== this.id) return;
-
-        if (msg.type === '__CONNECT_REQ__') {
-          // 老師端接收到學生連線
-          const conn = new VirtualConnection(this.id, msg.from, { postMessage: (m) => this._post(m) });
-          this.conns[msg.from] = conn;
-          conn.open = true;
-          if (this.handlers['connection']) {
-            this.handlers['connection'](conn);
-          }
-          this._post({ type: '__CONNECT_ACK__', from: this.id, to: msg.from });
-          setTimeout(() => conn._triggerOpen(), 10);
-        } else if (msg.type === '__CONNECT_ACK__') {
-          // 學生端接收到確認
-          const conn = this.conns[msg.from];
-          if (conn) {
-            conn._triggerOpen();
-          }
-        } else if (msg.type === '__DATA__') {
-          const conn = this.conns[msg.from];
-          if (conn) {
-            conn._triggerData(msg.payload);
-          }
-        } else if (msg.type === '__CLOSE__') {
-          const conn = this.conns[msg.from];
-          if (conn) {
-            conn._triggerClose();
-            delete this.conns[msg.from];
-          }
-        }
-      }
-
-      connect(targetHostId) {
-        const conn = new VirtualConnection(this.id, targetHostId, { postMessage: (m) => this._post(m) });
-        this.conns[targetHostId] = conn;
-
-        const sendReq = () => {
-          this._post({
-            type: '__CONNECT_REQ__',
-            from: this.id,
-            to: targetHostId
-          });
-        };
-        sendReq();
-        const retryTimer = setTimeout(sendReq, 200);
-
-        setTimeout(() => {
-          clearTimeout(retryTimer);
-          if (!conn.open && this.handlers['error']) {
-            this.handlers['error'](new Error('連線超時'));
-          }
-        }, 2500);
-
-        return conn;
-      }
-    }
-
-    // ==========================================================
     // 全域變數
     // ==========================================================
     let peer = null;
@@ -840,7 +679,6 @@
         document.getElementById('inputRoomCode').value = room.toUpperCase();
       }
 
-      // 檢查 localStorage 中是否已有老師開立的房間
       try {
         const savedRoom = localStorage.getItem('TW_ECON_ACTIVE_ROOM');
         if (savedRoom && (!room || room !== savedRoom)) {
@@ -889,14 +727,12 @@
     }
 
     // ==========================================================
-    // 🖥️+📱 單機同畫面雙視窗測試模式 (完美預覽體驗)
+    // 🖥️+📱 單機同畫面雙視窗測試模式 (單人快速預覽)
     // ==========================================================
     function startSplitDualMode() {
-      // 1. 自動啟動 Host
       startAsHost();
       const code = currentRoomCode;
 
-      // 2. 佈局切換至左右雙視窗
       document.getElementById('entrySection').classList.add('hidden');
       const dualContainer = document.getElementById('dualViewContainer');
       dualContainer.classList.remove('hidden');
@@ -909,17 +745,16 @@
       document.getElementById('dualHostCol').appendChild(hostSec);
       document.getElementById('dualStudentCol').appendChild(studentSec);
 
-      // 3. 自動以「01 測試體驗官」登入學生端
       document.getElementById('inputRoomCode').value = code;
       document.getElementById('inputStudentName').value = "01 測試體驗官";
       
       setTimeout(() => {
         joinAsStudent();
-      }, 50);
+      }, 500);
     }
 
     // ==========================================================
-    // 老師端 (HOST) 邏輯
+    // 老師端 (HOST) 邏輯 (支援 PeerJS WebRTC 跨裝置連線)
     // ==========================================================
     let currentRoomCode = '';
 
@@ -935,7 +770,12 @@
       } catch (_) {}
 
       const peerId = 'TW-ECON-' + code;
-      peer = new VirtualPeer(peerId);
+      if (peer) {
+        try { peer.destroy(); } catch (_) {}
+      }
+
+      // 建立 PeerJS 實體
+      peer = new Peer(peerId, { debug: 1 });
 
       peer.on('open', () => {
         document.getElementById('entrySection').classList.add('hidden');
@@ -953,7 +793,9 @@
         updateHostYearDisplay();
 
         const joinUrl = `${window.location.origin}${window.location.pathname}?room=${code}`;
-        new QRCode(document.getElementById("qrcode"), {
+        const qrBox = document.getElementById("qrcode");
+        qrBox.innerHTML = '';
+        new QRCode(qrBox, {
           text: joinUrl,
           width: 72,
           height: 72
@@ -979,6 +821,19 @@
           delete studentsState[conn.peer];
           renderHostDashboard();
         });
+
+        conn.on('error', (err) => {
+          console.error('連線錯誤:', err);
+        });
+      });
+
+      peer.on('error', (err) => {
+        if (err.type === 'unavailable-id') {
+          // 若遇極小機率房號重複，重新取號開房
+          startAsHost();
+        } else {
+          console.error('Peer error:', err);
+        }
       });
     }
 
@@ -998,7 +853,7 @@
       showModal('代碼已鎖定', '房間已鎖定代碼，遊戲正式開始！');
     }
 
-    // 🤖 一鍵產生 4 位測試學生 (方便單機預覽)
+    // 🤖 一鍵產生 4 位測試學生 (方便示範)
     function hostSpawnBots() {
       const botConfigs = [
         { name: "01 佃農老實人(阿發)", personality: "HARD_WORKER" },
@@ -1077,7 +932,8 @@
           type: 'SYNC_YEAR',
           yearIndex: currentYearIndex,
           timelineItem: TIMELINE_DATA[currentYearIndex],
-          studentData: studentsState[peerId]
+          studentData: studentsState[peerId],
+          roomCode: currentRoomCode
         });
         renderHostDashboard();
       } else if (data.type === 'SUBMIT_DECISION') {
@@ -1164,7 +1020,6 @@
       });
     }
 
-    // 老師主控確認下一年
     function hostNextRoundPrompt() {
       showModal(
         '確認結算推進',
@@ -1173,7 +1028,6 @@
       );
     }
 
-    // 快轉至下個重大節點
     function hostFastForwardMilestone() {
       let targetIdx = -1;
       for (let i = currentYearIndex + 1; i < TIMELINE_DATA.length; i++) {
@@ -1200,12 +1054,10 @@
       );
     }
 
-    // 核心結算年算法 (包含 1949 四萬換一塊幣制改革、租金、80%生活開銷、學費、健康增減、住院機制)
     function settleYearAndAdvance(doBroadcast = true) {
       const curData = TIMELINE_DATA[currentYearIndex];
       const isOldTwdYear = curData.year < 1949;
 
-      // 遍歷所有學生（包含真人與虛擬Bot）
       for (let peerId in studentsState) {
         const s = studentsState[peerId];
 
@@ -1215,16 +1067,16 @@
 
         const choice = s.choice || { action: 'NORMAL', newRole: 'KEEP' };
 
-        // 1. 處理轉職申請
+        // 1. 轉職
         if (choice.newRole && choice.newRole !== 'KEEP' && ROLES[choice.newRole]) {
           if (choice.newRole === 'high_tech' && s.education !== '大學') {
-            // 不得轉職
+            // 不符合大學學歷不得轉職
           } else {
             s.role = choice.newRole;
           }
         }
 
-        // 2. 計算基本年薪與歷史加乘
+        // 2. 年薪與開銷計算
         const roleConfig = ROLES[s.role];
         let roleBonusKey = 'lightBonus';
         if (s.role === 'tenant_farmer') roleBonusKey = 'tenantBonus';
@@ -1353,7 +1205,6 @@
       }
     }
 
-    // 🤖 測試學生性格決策邏輯
     function generateBotChoice(s, curData) {
       const unlocked = curData.unlockRoles || [];
       let newRole = 'KEEP';
@@ -1394,7 +1245,8 @@
           type: 'SYNC_YEAR',
           yearIndex: currentYearIndex,
           timelineItem: TIMELINE_DATA[currentYearIndex],
-          studentData: s
+          studentData: s,
+          roomCode: currentRoomCode
         });
       }
     }
@@ -1412,8 +1264,16 @@
     }
 
     // ==========================================================
-    // 學生端 (STUDENT) 登入與連線邏輯 (徹底防呆與修復)
+    // 學生端 (STUDENT) 登入與 PeerJS 跨裝置連線
     // ==========================================================
+    function resetStudentLoginBtn() {
+      const btn = document.getElementById('btnStudentJoin');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerText = '連線登入角色';
+      }
+    }
+
     function joinAsStudent() {
       const code = document.getElementById('inputRoomCode').value.trim().toUpperCase();
       const name = document.getElementById('inputStudentName').value.trim();
@@ -1421,23 +1281,26 @@
       if (!code || code.length !== 4) return showModal('輸入錯誤', '請輸入正確的 4 位數房間代碼！');
       if (!name) return showModal('輸入錯誤', '請輸入您的座號與暱稱！');
 
-      myStudentData.name = name;
-      peer = new VirtualPeer();
+      const joinBtn = document.getElementById('btnStudentJoin');
+      joinBtn.disabled = true;
+      joinBtn.innerText = '正在尋找大螢幕房間...';
 
-      peer.on('open', () => {
+      myStudentData.name = name;
+
+      if (peer) {
+        try { peer.destroy(); } catch (_) {}
+      }
+
+      // 建立學生端 Peer 實體
+      peer = new Peer(null, { debug: 1 });
+
+      peer.on('open', (myPeerId) => {
         const targetHostId = 'TW-ECON-' + code;
-        hostConn = peer.connect(targetHostId);
+        hostConn = peer.connect(targetHostId, { reliable: true });
 
         hostConn.on('open', () => {
+          joinBtn.innerText = '連線成功，登入角色中...';
           hostConn.send({ type: 'JOIN', name: name });
-
-          document.getElementById('entrySection').classList.add('hidden');
-          document.getElementById('studentSection').classList.remove('hidden');
-          document.getElementById('roomInfo').classList.remove('hidden');
-          document.getElementById('displayRoomCode').innerText = code;
-          document.getElementById('roleBadge').innerText = '學生連線中';
-          document.getElementById('roleBadge').className = 'text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-600 text-white';
-          document.getElementById('stuPlayerName').innerText = name;
         });
 
         hostConn.on('data', (data) => {
@@ -1446,45 +1309,26 @@
 
         hostConn.on('close', () => {
           showModal('連線中斷', '與老師大螢幕主控台之連線已中斷。');
+          resetStudentLoginBtn();
+        });
+
+        hostConn.on('error', (err) => {
+          showModal('連線錯誤', '連線大螢幕時發生錯誤：' + (err.message || err));
+          resetStudentLoginBtn();
         });
       });
 
       peer.on('error', (err) => {
-        // 若找不到房號，友善提供「自動為我開房」捷徑，絕不卡死
-        showModal(
-          '尚未偵測到大螢幕房間',
-          `目前尚未找到房號【<strong>${code}</strong>】的大螢幕主控台！<br/><br/>請問您是否要<strong>直接以房號【${code}】自動建立大螢幕並登入角色</strong>？`,
-          () => {
-            // 一鍵自動啟動 host 並連線
-            startAsHostWithCode(code, name);
-          },
-          () => {
-            // 取消，讓使用者檢查
-          }
-        );
+        if (err.type === 'peer-unavailable') {
+          showModal(
+            '找不到大螢幕房間',
+            `找不到房間代碼【<strong class="font-mono text-base">${code}</strong>】的大螢幕！<br/><br/>請確認：<br/>1. 老師端是否已點擊【我是老師，建立大螢幕主控台】。<br/>2. 4 位代碼是否完全吻合（不分大小寫）。<br/>3. 老師是否已經點選「開始(鎖定代碼)」。`
+          );
+        } else {
+          showModal('連線異常', `伺服器連線失敗 (${err.type || err.message})，請檢查網路連線後重試。`);
+        }
+        resetStudentLoginBtn();
       });
-    }
-
-    // 智能捷徑：自動建立指定房號並登入
-    function startAsHostWithCode(customCode, studentName) {
-      isHost = true;
-      currentRoomCode = customCode;
-      try { localStorage.setItem('TW_ECON_ACTIVE_ROOM', customCode); } catch (_) {}
-
-      const hostPeerId = 'TW-ECON-' + customCode;
-      const hostP = new VirtualPeer(hostPeerId);
-
-      hostP.on('connection', (conn) => {
-        conn.on('open', () => { studentConns[conn.peer] = conn; });
-        conn.on('data', (data) => { handleHostReceivedData(conn.peer, data); });
-      });
-
-      setTimeout(() => {
-        // 學生端連線
-        document.getElementById('inputRoomCode').value = customCode;
-        document.getElementById('inputStudentName').value = studentName;
-        joinAsStudent();
-      }, 100);
     }
 
     function handleStudentReceivedData(data) {
@@ -1499,6 +1343,15 @@
         myStudentData.wealth = s.wealth;
         myStudentData.lastNotice = s.lastNotice;
         myStudentData.isLocked = false;
+
+        // 切換進入學生畫面
+        document.getElementById('entrySection').classList.add('hidden');
+        document.getElementById('studentSection').classList.remove('hidden');
+        document.getElementById('roomInfo').classList.remove('hidden');
+        document.getElementById('displayRoomCode').innerText = data.roomCode || document.getElementById('inputRoomCode').value.trim().toUpperCase();
+        document.getElementById('roleBadge').innerText = '學生連線中';
+        document.getElementById('roleBadge').className = 'text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-600 text-white';
+        document.getElementById('stuPlayerName').innerText = myStudentData.name;
 
         document.getElementById('displayYear').innerText = timelineItem.year;
         document.getElementById('displayCurrencyTag').innerText = timelineItem.currency;
