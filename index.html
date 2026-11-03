@@ -60,6 +60,12 @@
         <p class="text-xs text-slate-500 mt-1">從 1945 戰後佃農出發，經歷半世紀歷史抉擇</p>
       </div>
 
+      <!-- 快速測試捷徑提示卡 -->
+      <div id="activeRoomNotice" class="hidden mb-4 p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-800 flex justify-between items-center">
+        <span>💡 偵測到大螢幕房號：<strong id="activeRoomCodeText" class="font-mono text-sm font-black">----</strong></span>
+        <button onclick="autoFillActiveRoom()" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] shadow">點擊自動填入</button>
+      </div>
+
       <div class="space-y-4">
         <!-- 學生加入 -->
         <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
@@ -67,7 +73,7 @@
           <div class="space-y-2.5">
             <input type="text" id="inputRoomCode" placeholder="請輸入 4 位房間代碼" maxlength="4" class="w-full px-3 py-2 text-center tracking-widest font-black uppercase text-lg border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-mono" />
             <input type="text" id="inputStudentName" placeholder="請輸入座號與暱稱 (例如：07 許大明)" class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white" />
-            <button onclick="joinAsStudent()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg transition shadow text-sm">連線登入角色</button>
+            <button onclick="joinAsStudent()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-lg transition shadow text-sm">連線登入角色</button>
           </div>
         </div>
 
@@ -77,12 +83,24 @@
           <div class="flex-grow border-t border-slate-300"></div>
         </div>
 
+        <!-- 雙視窗即時預覽模式（專為單機快速測試設計） -->
+        <button onclick="startSplitDualMode()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold py-2.5 rounded-xl shadow transition text-xs flex items-center justify-center space-x-1.5">
+          <span>🖥️ + 📱 啟動「同畫面雙視窗」預覽測試</span>
+          <span class="bg-white/20 text-[10px] px-1.5 py-0.5 rounded font-normal">推薦單人測試</span>
+        </button>
+
         <!-- 老師開房 -->
-        <button onclick="startAsHost()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl shadow transition text-sm flex items-center justify-center space-x-2">
+        <button onclick="startAsHost()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2.5 rounded-xl shadow transition text-xs flex items-center justify-center space-x-2">
           <span>我是老師，建立大螢幕主控台 (Host)</span>
         </button>
       </div>
     </section>
+
+    <!-- 雙視窗容器 (預覽測試時使用) -->
+    <div id="dualViewContainer" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <div id="dualHostCol" class="lg:col-span-7 space-y-3"></div>
+      <div id="dualStudentCol" class="lg:col-span-5 space-y-3"></div>
+    </div>
 
     <!-- 2. 老師端大螢幕 (無折線圖，字體大，適合教室投影) -->
     <section id="hostSection" class="hidden space-y-3">
@@ -628,13 +646,66 @@
       return `${cur} $${Math.round(amount).toLocaleString()}`;
     }
 
+    // ==========================================================
+    // 實作完整的虛擬連線層 (VirtualConnection + VirtualPeer)
+    // 徹底解決 ReferenceError，支援同頁面即時互通與跨分頁通訊
+    // ==========================================================
+    class VirtualConnection {
+      constructor(localId, remoteId, bus) {
+        this.peer = remoteId;
+        this.localId = localId;
+        this.bus = bus;
+        this.open = false;
+        this.handlers = {};
+      }
+      on(event, fn) {
+        this.handlers[event] = fn;
+      }
+      send(data) {
+        this.bus.postMessage({
+          type: '__DATA__',
+          from: this.localId,
+          to: this.peer,
+          payload: data
+        });
+      }
+      close() {
+        this.open = false;
+        this.bus.postMessage({
+          type: '__CLOSE__',
+          from: this.localId,
+          to: this.peer
+        });
+        this._triggerClose();
+      }
+      _triggerOpen() {
+        if (!this.open) {
+          this.open = true;
+          if (this.handlers['open']) this.handlers['open']();
+        }
+      }
+      _triggerData(data) {
+        if (this.handlers['data']) this.handlers['data'](data);
+      }
+      _triggerClose() {
+        if (this.open) {
+          this.open = false;
+          if (this.handlers['close']) this.handlers['close']();
+        }
+      }
+    }
+
+    // 虛擬 P2P 連線管理器
+    window._virtualPeers = window._virtualPeers || {};
+
     class VirtualPeer {
       constructor(id) {
         this.id = id || ('STU_' + Math.floor(Math.random() * 899999 + 100000));
         this.handlers = {};
         this.conns = {};
 
-        // 建立雙向通訊總線
+        window._virtualPeers[this.id] = this;
+
         this.busName = 'TW_ECON_SIMULATOR_CHANNEL';
         try {
           this.bc = new BroadcastChannel(this.busName);
@@ -643,7 +714,6 @@
           this.bc = null;
         }
 
-        // 兼備 localStorage 監聽作為備援
         this._storageHandler = (e) => {
           if (e.key === this.busName && e.newValue) {
             try {
@@ -656,7 +726,7 @@
 
         setTimeout(() => {
           if (this.handlers['open']) this.handlers['open'](this.id);
-        }, 30);
+        }, 15);
       }
 
       on(event, fn) {
@@ -664,6 +734,14 @@
       }
 
       _post(msg) {
+        // 同頁面直連派發 (零延遲)
+        for (let pid in window._virtualPeers) {
+          if (pid !== this.id) {
+            const targetPeer = window._virtualPeers[pid];
+            setTimeout(() => targetPeer._onMessage(msg), 5);
+          }
+        }
+        // 跨分頁廣播
         if (this.bc) {
           try { this.bc.postMessage(msg); } catch (_) {}
         }
@@ -677,18 +755,17 @@
         if (msg.to && msg.to !== this.id) return;
 
         if (msg.type === '__CONNECT_REQ__') {
-          // 老師收到學生連線請求
+          // 老師端接收到學生連線
           const conn = new VirtualConnection(this.id, msg.from, { postMessage: (m) => this._post(m) });
           this.conns[msg.from] = conn;
           conn.open = true;
           if (this.handlers['connection']) {
             this.handlers['connection'](conn);
           }
-          // 回覆確認封包
           this._post({ type: '__CONNECT_ACK__', from: this.id, to: msg.from });
-          setTimeout(() => conn._triggerOpen(), 20);
+          setTimeout(() => conn._triggerOpen(), 10);
         } else if (msg.type === '__CONNECT_ACK__') {
-          // 學生收到老師回覆
+          // 學生端接收到確認
           const conn = this.conns[msg.from];
           if (conn) {
             conn._triggerOpen();
@@ -711,7 +788,6 @@
         const conn = new VirtualConnection(this.id, targetHostId, { postMessage: (m) => this._post(m) });
         this.conns[targetHostId] = conn;
 
-        // 發送連線握手
         const sendReq = () => {
           this._post({
             type: '__CONNECT_REQ__',
@@ -720,15 +796,14 @@
           });
         };
         sendReq();
-        const retryTimer = setTimeout(sendReq, 300);
+        const retryTimer = setTimeout(sendReq, 200);
 
-        // 3秒未連上視為代碼有誤
         setTimeout(() => {
           clearTimeout(retryTimer);
           if (!conn.open && this.handlers['error']) {
             this.handlers['error'](new Error('連線超時'));
           }
-        }, 3200);
+        }, 2500);
 
         return conn;
       }
@@ -757,27 +832,90 @@
       isLocked: false
     };
 
-    // 自動填入 URL 房號
+    // 自動偵測現有房間代碼
     window.addEventListener('DOMContentLoaded', () => {
       const urlParams = new URLSearchParams(window.location.search);
       const room = urlParams.get('room');
       if (room) {
         document.getElementById('inputRoomCode').value = room.toUpperCase();
       }
+
+      // 檢查 localStorage 中是否已有老師開立的房間
+      try {
+        const savedRoom = localStorage.getItem('TW_ECON_ACTIVE_ROOM');
+        if (savedRoom && (!room || room !== savedRoom)) {
+          document.getElementById('activeRoomNotice').classList.remove('hidden');
+          document.getElementById('activeRoomCodeText').innerText = savedRoom;
+        }
+      } catch (_) {}
     });
 
+    function autoFillActiveRoom() {
+      const savedRoom = localStorage.getItem('TW_ECON_ACTIVE_ROOM');
+      if (savedRoom) {
+        document.getElementById('inputRoomCode').value = savedRoom;
+      }
+    }
+
     // 簡易客製化 Modal (無 alert / confirm)
-    function showModal(title, msg, onOk = null) {
+    function showModal(title, msg, onOk = null, onCancel = null) {
       document.getElementById('modalTitle').innerText = title;
       document.getElementById('modalMsg').innerHTML = msg;
       const modal = document.getElementById('customModal');
       modal.classList.remove('hidden');
 
-      const okBtn = document.getElementById('modalBtnOk');
+      const btnContainer = document.getElementById('modalButtons');
+      btnContainer.innerHTML = '';
+
+      if (onCancel) {
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg text-xs';
+        cancelBtn.innerText = '取消';
+        cancelBtn.onclick = () => {
+          modal.classList.add('hidden');
+          onCancel();
+        };
+        btnContainer.appendChild(cancelBtn);
+      }
+
+      const okBtn = document.createElement('button');
+      okBtn.className = 'px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs';
+      okBtn.innerText = '確定';
       okBtn.onclick = () => {
         modal.classList.add('hidden');
         if (onOk) onOk();
       };
+      btnContainer.appendChild(okBtn);
+    }
+
+    // ==========================================================
+    // 🖥️+📱 單機同畫面雙視窗測試模式 (完美預覽體驗)
+    // ==========================================================
+    function startSplitDualMode() {
+      // 1. 自動啟動 Host
+      startAsHost();
+      const code = currentRoomCode;
+
+      // 2. 佈局切換至左右雙視窗
+      document.getElementById('entrySection').classList.add('hidden');
+      const dualContainer = document.getElementById('dualViewContainer');
+      dualContainer.classList.remove('hidden');
+
+      const hostSec = document.getElementById('hostSection');
+      const studentSec = document.getElementById('studentSection');
+      hostSec.classList.remove('hidden');
+      studentSec.classList.remove('hidden');
+
+      document.getElementById('dualHostCol').appendChild(hostSec);
+      document.getElementById('dualStudentCol').appendChild(studentSec);
+
+      // 3. 自動以「01 測試體驗官」登入學生端
+      document.getElementById('inputRoomCode').value = code;
+      document.getElementById('inputStudentName').value = "01 測試體驗官";
+      
+      setTimeout(() => {
+        joinAsStudent();
+      }, 50);
     }
 
     // ==========================================================
@@ -792,8 +930,11 @@
       for (let i = 0; i < 4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
       currentRoomCode = code;
 
+      try {
+        localStorage.setItem('TW_ECON_ACTIVE_ROOM', code);
+      } catch (_) {}
+
       const peerId = 'TW-ECON-' + code;
-      // 使用 VirtualPeer 避開 WebSocket SecurityError
       peer = new VirtualPeer(peerId);
 
       peer.on('open', () => {
@@ -874,7 +1015,7 @@
             role: "tenant_farmer",
             education: "國小",
             health: 100,
-            wealth: 100000, // 舊臺幣初始
+            wealth: 100000,
             readyYearIndex: currentYearIndex,
             choice: null,
             isBot: true,
@@ -914,7 +1055,7 @@
       const unlockNote = document.getElementById('hostUnlockNote');
       let unlockedNames = curData.unlockRoles.map(r => ROLES[r].name).join('、');
       if (!unlockedNames) unlockedNames = "傳統農業為主（佃農）";
-      unlockNote.innerHTML = `本歷史階段解鎖/主流工種：<strong class="text-indigo-700">${unlockedNames}</strong>。`;
+      unlockNote.innerHTML = `本歷史階段解鎖/主流工種：<strong class="text-indigo-700 font-bold">${unlockedNames}</strong>。`;
 
       renderHostDashboard();
     }
@@ -926,7 +1067,7 @@
           role: "tenant_farmer",
           education: "國小",
           health: 100,
-          wealth: currentYearIndex < 4 ? 100000 : 200, // 1949前為舊臺幣
+          wealth: currentYearIndex < 4 ? 100000 : 200,
           readyYearIndex: -1,
           choice: null,
           isBot: false
@@ -1068,7 +1209,6 @@
       for (let peerId in studentsState) {
         const s = studentsState[peerId];
 
-        // 若為測試 Bot，自動依性格產生決策
         if (s.isBot) {
           s.choice = generateBotChoice(s, curData);
         }
@@ -1098,18 +1238,16 @@
 
         let grossIncome = 0;
         let rent = 0;
-        let expense = Math.round(curData.baseIncome * 0.8); // 80% 基本生活開銷
+        let expense = Math.round(curData.baseIncome * 0.8);
         let tuition = 0;
         let hpDelta = 0;
         let actionNote = "";
 
-        // 計算求學學費（依幣制區分）
         let tuitionMiddle = isOldTwdYear ? 80000 : 2000;
         let tuitionCollege = isOldTwdYear ? 200000 : 5000;
         let tuitionGrad = isOldTwdYear ? 120000 : 3000;
 
         if (choice.action === 'STUDY') {
-          // 讀書：年收降為 0，需付學費，免除一般開銷，健康+5
           grossIncome = 0;
           rent = 0;
           expense = 0;
@@ -1138,7 +1276,6 @@
             actionNote = `大學深造研發，繳納研修學費 ${formatMoney(tuition, curData.year)}！`;
           }
         } else {
-          // 工作模式：HARD / NORMAL / EASY
           if (choice.action === 'HARD') {
             grossIncome = Math.round(standardGross * 1.4);
             hpDelta = -15;
@@ -1153,7 +1290,6 @@
             actionNote = `一般正常工時（標準薪資，健康 -2）`;
           }
 
-          // 地租扣除：僅佃農需繳租 (1949前 50%，1949後 37.5%)
           if (s.role === 'tenant_farmer') {
             const rentRate = curData.year < 1949 ? 0.50 : 0.375;
             rent = Math.round(grossIncome * rentRate);
@@ -1162,23 +1298,19 @@
           }
         }
 
-        // 當期結算淨儲蓄
         const netSavings = grossIncome - rent - expense - tuition;
         s.wealth = Math.max(0, s.wealth + netSavings);
 
-        // 健康度更新
         s.health = Math.min(100, Math.max(0, s.health + hpDelta));
 
-        // 過勞住院檢查
         let hospitalNote = "";
         if (s.health <= 0) {
           const medCost = Math.round(curData.baseIncome * 0.5);
           s.wealth = Math.max(0, s.wealth - medCost);
-          s.health = 30; // 恢復至 30
+          s.health = 30;
           hospitalNote = `⚠️ 警告：因過勞體力耗盡入院搶救，扣除醫藥費 ${formatMoney(medCost, curData.year)}，健康度重置為 30 點！`;
         }
 
-        // 貨幣改革：若即將進入 1949 年（當前為 1948 年結算完成時）
         let currencyReformNote = "";
         if (curData.year === 1948) {
           const oldWealth = s.wealth;
@@ -1186,7 +1318,6 @@
           currencyReformNote = `【1949年6月重大事件：四萬換一塊】政府發行新臺幣！原存款舊臺幣 $${oldWealth.toLocaleString()}，依 40,000 : 1 兌換為新臺幣 $${s.wealth.toLocaleString()}！`;
         }
 
-        // 保存給學生的財務對帳單
         s.lastNotice = {
           year: curData.year,
           roleName: roleConfig.name,
@@ -1201,12 +1332,10 @@
           currencyReformNote: currencyReformNote
         };
 
-        // 重置決策
         s.choice = null;
         s.readyYearIndex = -1;
       }
 
-      // 檢查是否結束 (2000年)
       if (currentYearIndex >= TIMELINE_DATA.length - 1) {
         const rankings = calculateRankings();
         renderLeaderboardUI(rankings);
@@ -1283,13 +1412,13 @@
     }
 
     // ==========================================================
-    // 學生端 (STUDENT) 邏輯
+    // 學生端 (STUDENT) 登入與連線邏輯 (徹底防呆與修復)
     // ==========================================================
     function joinAsStudent() {
       const code = document.getElementById('inputRoomCode').value.trim().toUpperCase();
       const name = document.getElementById('inputStudentName').value.trim();
 
-      if (!code || code.length !== 4) return showModal('輸入錯誤', '請輸入正確的 4 位數房間驗證碼！');
+      if (!code || code.length !== 4) return showModal('輸入錯誤', '請輸入正確的 4 位數房間代碼！');
       if (!name) return showModal('輸入錯誤', '請輸入您的座號與暱稱！');
 
       myStudentData.name = name;
@@ -1321,8 +1450,41 @@
       });
 
       peer.on('error', (err) => {
-        showModal('連線失敗', `找不到房號【${code}】的大螢幕！請確認代碼是否輸入正確，或確認老師端已建立房間。`);
+        // 若找不到房號，友善提供「自動為我開房」捷徑，絕不卡死
+        showModal(
+          '尚未偵測到大螢幕房間',
+          `目前尚未找到房號【<strong>${code}</strong>】的大螢幕主控台！<br/><br/>請問您是否要<strong>直接以房號【${code}】自動建立大螢幕並登入角色</strong>？`,
+          () => {
+            // 一鍵自動啟動 host 並連線
+            startAsHostWithCode(code, name);
+          },
+          () => {
+            // 取消，讓使用者檢查
+          }
+        );
       });
+    }
+
+    // 智能捷徑：自動建立指定房號並登入
+    function startAsHostWithCode(customCode, studentName) {
+      isHost = true;
+      currentRoomCode = customCode;
+      try { localStorage.setItem('TW_ECON_ACTIVE_ROOM', customCode); } catch (_) {}
+
+      const hostPeerId = 'TW-ECON-' + customCode;
+      const hostP = new VirtualPeer(hostPeerId);
+
+      hostP.on('connection', (conn) => {
+        conn.on('open', () => { studentConns[conn.peer] = conn; });
+        conn.on('data', (data) => { handleHostReceivedData(conn.peer, data); });
+      });
+
+      setTimeout(() => {
+        // 學生端連線
+        document.getElementById('inputRoomCode').value = customCode;
+        document.getElementById('inputStudentName').value = studentName;
+        joinAsStudent();
+      }, 100);
     }
 
     function handleStudentReceivedData(data) {
@@ -1509,6 +1671,8 @@
     function renderLeaderboardUI(rankings) {
       document.getElementById('hostSection').classList.add('hidden');
       document.getElementById('studentSection').classList.add('hidden');
+      const dualContainer = document.getElementById('dualViewContainer');
+      if (dualContainer) dualContainer.classList.add('hidden');
       document.getElementById('leaderboardSection').classList.remove('hidden');
 
       const medals = ['🥇 第一名', '🥈 第二名', '🥉 第三名', '第 4 名', '第 5 名', '第 6 名', '第 7 名', '第 8 名'];
